@@ -1,6 +1,7 @@
 """Platform fiber photometry acorn."""
 
 import logging
+import re
 
 import pandas as pd
 from aind_data_access_api.document_db import MetadataDbClient
@@ -11,6 +12,7 @@ from zombie_squirrel.squirrel import Column
 from zombie_squirrel.utils import SquirrelMessage, setup_logging
 
 BATCH_SIZE = 100
+MAX_FIBERS = 4
 
 
 def _fetch_fib_records(asset_names: list[str]) -> list[dict]:
@@ -54,7 +56,7 @@ def _extract_fiber_channel_map(record: dict) -> dict[str, str | None]:
                 continue
             ch = channels[0]
             channel_name = ch.get("channel_name", "")
-            # channel_name is like "Fiber 0_green" — derive fiber id from prefix
+            # channel_name is like "Fiber 0_green" — derive fiber id from prefix before underscore
             parts = channel_name.split("_")
             fiber_key = parts[0] if parts else channel_name
             fiber_channel[fiber_key] = ch.get("intended_measurement")
@@ -82,32 +84,35 @@ def _extract_fiber_structure_map(record: dict) -> dict[str, str | None]:
     return fiber_structure
 
 
+def _fiber_sort_key(fiber_name: str) -> int:
+    """Extract trailing integer from fiber name for ordering (e.g. 'Fiber_0' -> 0)."""
+    match = re.search(r"(\d+)$", fiber_name)
+    return int(match.group(1)) if match else 0
+
+
+def _lookup_channel(fiber_name: str, fiber_channel: dict[str, str | None]) -> str | None:
+    """Look up intended_measurement for a fiber, trying both underscore and space variants."""
+    if fiber_name in fiber_channel:
+        return fiber_channel[fiber_name]
+    return fiber_channel.get(fiber_name.replace("_", " "))
+
+
 def _build_fib_rows(records: list[dict]) -> list[dict]:
-    """Build one row per (asset, fiber) from raw docdb records."""
+    """Build one row per asset with fiber_N_targeted_structure and fiber_N_intended_measurement columns."""
     rows = []
     for record in records:
         asset_name = record.get("name")
         fiber_structure = _extract_fiber_structure_map(record)
         fiber_channel = _extract_fiber_channel_map(record)
 
-        # Normalize fiber_channel keys to match fiber_structure keys.
-        # fiber_structure keys are like "Fiber_0", fiber_channel keys are like "Fiber 0"
-        # (space vs underscore). Build a lookup that tries both variants.
-        def _lookup_channel(fiber_name: str) -> str | None:
-            if fiber_name in fiber_channel:
-                return fiber_channel[fiber_name]
-            normalized = fiber_name.replace("_", " ")
-            return fiber_channel.get(normalized)
+        sorted_fibers = sorted(fiber_structure.keys(), key=_fiber_sort_key)
 
-        for fiber_name, acronym in fiber_structure.items():
-            rows.append(
-                {
-                    "asset_name": asset_name,
-                    "fiber_name": fiber_name,
-                    "targeted_structure": acronym,
-                    "intended_measurement": _lookup_channel(fiber_name),
-                }
-            )
+        row: dict = {"asset_name": asset_name}
+        for i in range(MAX_FIBERS):
+            fiber_name = sorted_fibers[i] if i < len(sorted_fibers) else None
+            row[f"fiber_{i}_targeted_structure"] = fiber_structure[fiber_name] if fiber_name else None
+            row[f"fiber_{i}_intended_measurement"] = _lookup_channel(fiber_name, fiber_channel) if fiber_name else None
+        rows.append(row)
     return rows
 
 
@@ -116,16 +121,17 @@ def platform_fib(force_update: bool = False) -> pd.DataFrame:
     """Build a DataFrame of fiber photometry assets with per-fiber targeting and channel info.
 
     Fetches raw fiber photometry assets (modality 'fib') from asset_basics, then
-    enriches with procedures and acquisition metadata. One row per (asset, fiber),
-    containing the targeted brain structure acronym and the intended measurement of
-    the channel attached to that fiber. Results are cached.
+    enriches with procedures and acquisition metadata. One row per asset with up to
+    4 fiber columns, each containing the targeted brain structure acronym and the
+    intended measurement of the channel attached to that fiber. Results are cached.
 
     Args:
         force_update: If True, bypass cache and rebuild from database.
 
     Returns:
-        DataFrame with one row per (asset, fiber) and columns:
-        asset_name, fiber_name, targeted_structure, intended_measurement.
+        DataFrame with one row per asset and columns: asset_name,
+        fiber_0_targeted_structure, fiber_0_intended_measurement, ...,
+        fiber_3_targeted_structure, fiber_3_intended_measurement.
     """
     df = acorns.TREE.scurry(acorns.NAMES["fib"])
 
@@ -165,15 +171,18 @@ def platform_fib(force_update: bool = False) -> pd.DataFrame:
 
 def platform_fib_columns() -> list[Column]:
     """Return platform_fib acorn column definitions."""
-    return [
-        Column(name="asset_name", description="Asset name, joinable with asset_basics.name"),
-        Column(name="fiber_name", description="Name of the fiber probe (e.g. Fiber_0)"),
-        Column(
-            name="targeted_structure",
-            description="CCF acronym of the primary targeted brain structure for the fiber",
-        ),
-        Column(
-            name="intended_measurement",
-            description="Intended measurement of the channel attached to this fiber (e.g. DA, 5-HT)",
-        ),
-    ]
+    cols = [Column(name="asset_name", description="Asset name, joinable with asset_basics.name")]
+    for i in range(MAX_FIBERS):
+        cols.append(
+            Column(
+                name=f"fiber_{i}_targeted_structure",
+                description=f"CCF acronym of the primary targeted brain structure for fiber {i}",
+            )
+        )
+        cols.append(
+            Column(
+                name=f"fiber_{i}_intended_measurement",
+                description=f"Intended measurement of the channel attached to fiber {i} (e.g. DA, 5-HT)",
+            )
+        )
+    return cols

@@ -6,10 +6,13 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 
 from zombie_squirrel.acorn_helpers.platform_fib import (
+    MAX_FIBERS,
     _build_fib_rows,
     _extract_fiber_channel_map,
     _extract_fiber_structure_map,
     _fetch_fib_records,
+    _fiber_sort_key,
+    _lookup_channel,
     platform_fib,
     platform_fib_columns,
 )
@@ -183,45 +186,89 @@ class TestExtractFiberChannelMap(unittest.TestCase):
         self.assertIsNone(result["Fiber 0"])
 
 
+class TestFiberSortKey(unittest.TestCase):
+    """Tests for _fiber_sort_key."""
+
+    def test_extracts_trailing_integer(self):
+        """Test trailing integer extracted from fiber name."""
+        self.assertEqual(_fiber_sort_key("Fiber_0"), 0)
+        self.assertEqual(_fiber_sort_key("Fiber_3"), 3)
+        self.assertEqual(_fiber_sort_key("Fiber_12"), 12)
+
+    def test_no_integer_returns_zero(self):
+        """Test returns 0 when no integer in name."""
+        self.assertEqual(_fiber_sort_key("Fiber"), 0)
+
+
+class TestLookupChannel(unittest.TestCase):
+    """Tests for _lookup_channel."""
+
+    def test_exact_match(self):
+        """Test exact key match returns value."""
+        self.assertEqual(_lookup_channel("Fiber_0", {"Fiber_0": "DA"}), "DA")
+
+    def test_space_variant_fallback(self):
+        """Test underscore-to-space normalization finds key."""
+        self.assertEqual(_lookup_channel("Fiber_0", {"Fiber 0": "DA"}), "DA")
+
+    def test_missing_returns_none(self):
+        """Test missing key returns None."""
+        self.assertIsNone(_lookup_channel("Fiber_5", {"Fiber 0": "DA"}))
+
+
 class TestBuildFibRows(unittest.TestCase):
     """Tests for _build_fib_rows."""
 
-    def test_builds_one_row_per_fiber(self):
-        """Test one row produced per (asset, fiber) pair."""
+    def test_builds_one_row_per_asset(self):
+        """Test one row produced per asset, not per fiber."""
         rows = _build_fib_rows([EXAMPLE_RECORD])
-        self.assertEqual(len(rows), 2)
+        self.assertEqual(len(rows), 1)
 
-    def test_row_columns(self):
-        """Test row contains expected columns."""
+    def test_row_has_asset_name(self):
+        """Test row contains asset_name."""
         rows = _build_fib_rows([EXAMPLE_RECORD])
-        row0 = rows[0]
-        self.assertIn("asset_name", row0)
-        self.assertIn("fiber_name", row0)
-        self.assertIn("targeted_structure", row0)
-        self.assertIn("intended_measurement", row0)
+        self.assertEqual(rows[0]["asset_name"], "behavior_854147_2026-05-18_13-14-35")
 
-    def test_row_values(self):
-        """Test row values are correctly extracted and cross-referenced."""
+    def test_row_has_fiber_columns(self):
+        """Test row has fiber_N_targeted_structure and fiber_N_intended_measurement for each fiber slot."""
         rows = _build_fib_rows([EXAMPLE_RECORD])
-        by_fiber = {r["fiber_name"]: r for r in rows}
-        self.assertEqual(by_fiber["Fiber_0"]["targeted_structure"], "ACB")
-        self.assertEqual(by_fiber["Fiber_0"]["intended_measurement"], "DA")
-        self.assertEqual(by_fiber["Fiber_1"]["targeted_structure"], "PIR")
-        self.assertEqual(by_fiber["Fiber_1"]["intended_measurement"], "5-HT")
+        row = rows[0]
+        for i in range(MAX_FIBERS):
+            self.assertIn(f"fiber_{i}_targeted_structure", row)
+            self.assertIn(f"fiber_{i}_intended_measurement", row)
 
-    def test_asset_name_set(self):
-        """Test asset_name is set from record name."""
+    def test_fiber_values_correct(self):
+        """Test fiber columns populated correctly from procedures and acquisition."""
         rows = _build_fib_rows([EXAMPLE_RECORD])
-        for row in rows:
-            self.assertEqual(row["asset_name"], "behavior_854147_2026-05-18_13-14-35")
+        row = rows[0]
+        self.assertEqual(row["fiber_0_targeted_structure"], "ACB")
+        self.assertEqual(row["fiber_0_intended_measurement"], "DA")
+        self.assertEqual(row["fiber_1_targeted_structure"], "PIR")
+        self.assertEqual(row["fiber_1_intended_measurement"], "5-HT")
+
+    def test_unused_fiber_slots_are_none(self):
+        """Test fiber columns beyond available fibers are None."""
+        rows = _build_fib_rows([EXAMPLE_RECORD])
+        row = rows[0]
+        # EXAMPLE_RECORD has 2 fibers; slots 2 and 3 should be None
+        self.assertIsNone(row["fiber_2_targeted_structure"])
+        self.assertIsNone(row["fiber_2_intended_measurement"])
+        self.assertIsNone(row["fiber_3_targeted_structure"])
+        self.assertIsNone(row["fiber_3_intended_measurement"])
 
     def test_empty_records(self):
         """Test empty records list returns empty rows list."""
         rows = _build_fib_rows([])
         self.assertEqual(rows, [])
 
-    def test_channel_not_matched_returns_none(self):
-        """Test intended_measurement is None when no channel matches fiber."""
+    def test_multiple_assets_produce_multiple_rows(self):
+        """Test two assets produce two rows."""
+        record2 = {**EXAMPLE_RECORD, "name": "behavior_999_2026-01-01"}
+        rows = _build_fib_rows([EXAMPLE_RECORD, record2])
+        self.assertEqual(len(rows), 2)
+
+    def test_fibers_sorted_by_index(self):
+        """Test fibers are ordered by their trailing integer regardless of insertion order."""
         record = {
             "name": "asset_x",
             "procedures": {
@@ -230,11 +277,14 @@ class TestBuildFibRows(unittest.TestCase):
                         "procedures": [
                             {
                                 "object_type": "Probe implant",
-                                "implanted_device": {"name": "Fiber_5"},
-                                "device_config": {
-                                    "primary_targeted_structure": {"acronym": "MOp"}
-                                },
-                            }
+                                "implanted_device": {"name": "Fiber_1"},
+                                "device_config": {"primary_targeted_structure": {"acronym": "PIR"}},
+                            },
+                            {
+                                "object_type": "Probe implant",
+                                "implanted_device": {"name": "Fiber_0"},
+                                "device_config": {"primary_targeted_structure": {"acronym": "ACB"}},
+                            },
                         ]
                     }
                 ]
@@ -242,8 +292,9 @@ class TestBuildFibRows(unittest.TestCase):
             "acquisition": {"data_streams": []},
         }
         rows = _build_fib_rows([record])
-        self.assertEqual(len(rows), 1)
-        self.assertIsNone(rows[0]["intended_measurement"])
+        row = rows[0]
+        self.assertEqual(row["fiber_0_targeted_structure"], "ACB")
+        self.assertEqual(row["fiber_1_targeted_structure"], "PIR")
 
 
 class TestFetchFibRecords(unittest.TestCase):
@@ -286,9 +337,8 @@ class TestPlatformFib(unittest.TestCase):
         cached_df = pd.DataFrame(
             {
                 "asset_name": ["behavior_123"],
-                "fiber_name": ["Fiber_0"],
-                "targeted_structure": ["ACB"],
-                "intended_measurement": ["DA"],
+                "fiber_0_targeted_structure": ["ACB"],
+                "fiber_0_intended_measurement": ["DA"],
             }
         )
         mock_tree.scurry.return_value = cached_df
@@ -296,7 +346,7 @@ class TestPlatformFib(unittest.TestCase):
         result = platform_fib(force_update=False)
 
         self.assertEqual(len(result), 1)
-        self.assertEqual(result.iloc[0]["targeted_structure"], "ACB")
+        self.assertEqual(result.iloc[0]["fiber_0_targeted_structure"], "ACB")
 
     @patch("zombie_squirrel.acorn_helpers.platform_fib.acorns.TREE")
     def test_empty_cache_raises_error(self, mock_tree):
@@ -327,7 +377,8 @@ class TestPlatformFib(unittest.TestCase):
 
         result = platform_fib(force_update=True)
 
-        self.assertEqual(len(result), 2)
+        # one row per asset
+        self.assertEqual(len(result), 1)
         mock_tree.hide.assert_called_once()
 
     @patch("zombie_squirrel.acorn_helpers.platform_fib.MetadataDbClient")
@@ -359,19 +410,19 @@ class TestPlatformFib(unittest.TestCase):
 class TestPlatformFibColumns(unittest.TestCase):
     """Tests for platform_fib_columns."""
 
-    def test_returns_four_columns(self):
-        """Test column list has expected length."""
+    def test_returns_correct_count(self):
+        """Test column list has one asset_name plus two columns per fiber slot."""
         cols = platform_fib_columns()
-        self.assertEqual(len(cols), 4)
+        self.assertEqual(len(cols), 1 + MAX_FIBERS * 2)
 
     def test_column_names(self):
         """Test column names match expected output schema."""
         cols = platform_fib_columns()
         names = [c.name for c in cols]
         self.assertIn("asset_name", names)
-        self.assertIn("fiber_name", names)
-        self.assertIn("targeted_structure", names)
-        self.assertIn("intended_measurement", names)
+        for i in range(MAX_FIBERS):
+            self.assertIn(f"fiber_{i}_targeted_structure", names)
+            self.assertIn(f"fiber_{i}_intended_measurement", names)
 
 
 if __name__ == "__main__":
