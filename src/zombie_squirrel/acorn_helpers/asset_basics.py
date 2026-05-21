@@ -48,6 +48,7 @@ def asset_basics(force_update: bool = False) -> pd.DataFrame:
         "name",
         "acquisition.experimenters",
         "acquisition.instrument_id",
+        "data_description.investigators",
     ]
 
     if df.empty and not force_update:
@@ -79,6 +80,7 @@ def asset_basics(force_update: bool = False) -> pd.DataFrame:
                 "name",
                 "experimenters",
                 "instrument_id",
+                "investigators",
             ]
         )
         client = MetadataDbClient(
@@ -180,6 +182,9 @@ def asset_basics(force_update: bool = False) -> pd.DataFrame:
                     for e in (record.get("acquisition", {}).get("experimenters", []) or [])
                 ),
                 "instrument_id": record.get("acquisition", {}).get("instrument_id", None),
+                "investigators": ", ".join(
+                    i.get("name", "") for i in (record.get("data_description", {}).get("investigators", []) or [])
+                ),
             }
             records.append(flat_record)
 
@@ -215,4 +220,5 @@ def asset_basics_columns() -> list[Column]:
         Column(name="name", description="Asset name"),
         Column(name="experimenters", description="Acquisition experimenters, comma-separated if multiple"),
         Column(name="instrument_id", description="Instrument ID used for the acquisition"),
+        Column(name="investigators", description="Investigators from data_description, comma-separated if multiple"),
     ]
