@@ -157,7 +157,6 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
         self.assertIn("quality_control", names)
         self.assertIn("assets_smartspim", names)
         self.assertIn("metadata_upgrade", names)
-        self.assertIn("foraging_sessions", names)
         self.assertIn("platform_fib", names)
 
     @patch("zombie_squirrel.sync.TREE")

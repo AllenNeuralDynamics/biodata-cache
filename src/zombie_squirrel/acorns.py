@@ -41,7 +41,6 @@ NAMES = {
     "qc": "quality_control",
     "smartspim": "assets_smartspim",
     "upgrade": "metadata_upgrade",
-    "foraging": "foraging_sessions",
     "fib": "platform_fib",
 }
 

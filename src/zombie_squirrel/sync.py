@@ -4,7 +4,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .acorn_helpers.asset_basics import asset_basics_columns
 from .acorn_helpers.assets_smartspim import assets_smartspim_columns
-from .acorn_helpers.foraging_sessions import foraging_sessions_columns
 from .acorn_helpers.platform_fib import platform_fib_columns
 from .acorn_helpers.metadata_upgrade import metadata_upgrade_columns
 from .acorn_helpers.qc import qc_columns
@@ -78,14 +77,6 @@ def publish_squirrel_metadata() -> None:
             partitioned=False,
             type=AcornType.metadata,
             columns=metadata_upgrade_columns(),
-        ),
-        Acorn(
-            name=NAMES["foraging"],
-            description="Pre-computed foraging session scores with percentile ranks and rolling averages",
-            location=TREE.get_location(NAMES["foraging"]),
-            partitioned=False,
-            type=AcornType.metadata,
-            columns=foraging_sessions_columns(),
         ),
         Acorn(
             name=NAMES["fib"],
