@@ -29,9 +29,8 @@ dev = [
     'ruff',
     'coverage',
     'interrogate',
-    'Sphinx',
-    'furo',
     'pre-commit',
+    'pytest',
 ]
 
 [tool.setuptools.packages.find]

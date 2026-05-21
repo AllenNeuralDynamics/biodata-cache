@@ -1,429 +1,364 @@
 """Unit tests for platform_fib acorn."""
 
-import unittest
+import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 
 from zombie_squirrel.acorn_helpers.platform_fib import (
-    MAX_FIBERS,
     _build_fib_rows,
-    _extract_fiber_channel_map,
+    _extract_fiber_channel_entries,
     _extract_fiber_structure_map,
     _fetch_fib_records,
-    _fiber_sort_key,
-    _lookup_channel,
     platform_fib,
     platform_fib_columns,
 )
 
-EXAMPLE_RECORD = {
-    "_id": "abc123",
-    "name": "behavior_854147_2026-05-18_13-14-35",
+RESOURCES = Path(__file__).parent.parent / "resources"
+
+
+@pytest.fixture(scope="session")
+def real_record():
+    with open(RESOURCES / "fiber_example3.json") as f:
+        return json.load(f)
+
+
+# Minimal synthetic record: procedures use underscores ("Fiber_0"), connections
+# use spaces ("Fiber 0") — the exact mismatch seen in production.
+SYNTHETIC_RECORD = {
+    "name": "test_asset_001",
     "procedures": {
         "subject_procedures": [
             {
-                "object_type": "Surgery",
                 "procedures": [
                     {
                         "object_type": "Probe implant",
-                        "implanted_device": {"object_type": "Fiber probe", "name": "Fiber_0"},
-                        "device_config": {
-                            "primary_targeted_structure": {
-                                "atlas": "CCFv3",
-                                "name": "Nucleus accumbens",
-                                "acronym": "ACB",
-                                "id": "56",
-                            }
-                        },
+                        "implanted_device": {"name": "Fiber_0"},
+                        "device_config": {"primary_targeted_structure": {"acronym": "ACB"}},
                     },
                     {
                         "object_type": "Probe implant",
-                        "implanted_device": {"object_type": "Fiber probe", "name": "Fiber_1"},
-                        "device_config": {
-                            "primary_targeted_structure": {
-                                "atlas": "CCFv3",
-                                "name": "Piriform area",
-                                "acronym": "PIR",
-                                "id": "215",
-                            }
-                        },
+                        "implanted_device": {"name": "Fiber_1"},
+                        "device_config": {"primary_targeted_structure": {"acronym": "PIR"}},
                     },
-                ],
+                ]
             }
         ]
     },
     "acquisition": {
         "data_streams": [
             {
+                "connections": [
+                    # space-form target — must still match underscore-form fiber names
+                    {"object_type": "Connection", "source_device": "Patch Cord 0", "target_device": "Fiber 0"},
+                    {"object_type": "Connection", "source_device": "Patch Cord 1", "target_device": "Fiber 1"},
+                    # detector connection — must NOT clobber patch cord mapping
+                    {"object_type": "Connection", "source_device": "Patch Cord 0", "target_device": "Green CMOS"},
+                ],
                 "configurations": [
                     {
                         "object_type": "Patch cord config",
-                        "device_name": "Patch Cord A",
+                        "device_name": "Patch Cord 0",
                         "channels": [
-                            {
-                                "channel_name": "Fiber 0_green",
-                                "intended_measurement": "DA",
-                            }
+                            {"channel_name": "Fiber_0_Green", "intended_measurement": "calcium"},
+                            {"channel_name": "Fiber_0_Isosbestic", "intended_measurement": "control"},
                         ],
                     },
                     {
                         "object_type": "Patch cord config",
-                        "device_name": "Patch Cord B",
+                        "device_name": "Patch Cord 1",
                         "channels": [
-                            {
-                                "channel_name": "Fiber 1_green",
-                                "intended_measurement": "5-HT",
-                            }
+                            {"channel_name": "Fiber_1_Green", "intended_measurement": "dopamine"},
                         ],
                     },
-                ]
+                ],
             }
         ]
     },
 }
 
 
-class TestExtractFiberStructureMap(unittest.TestCase):
-    """Tests for _extract_fiber_structure_map."""
+# --- _extract_fiber_structure_map ---
 
-    def test_extracts_fiber_structure(self):
-        """Test fiber structure acronyms extracted from probe implant procedures."""
-        result = _extract_fiber_structure_map(EXAMPLE_RECORD)
-        self.assertEqual(result, {"Fiber_0": "ACB", "Fiber_1": "PIR"})
+def test_extract_fiber_structure_map_known():
+    result = _extract_fiber_structure_map(SYNTHETIC_RECORD)
+    assert result == {"Fiber_0": "ACB", "Fiber_1": "PIR"}
 
-    def test_empty_procedures(self):
-        """Test returns empty dict when no procedures present."""
-        result = _extract_fiber_structure_map({})
-        self.assertEqual(result, {})
 
-    def test_skips_non_probe_implant(self):
-        """Test non-probe-implant procedures are ignored."""
-        record = {
-            "procedures": {
-                "subject_procedures": [
-                    {
-                        "procedures": [
-                            {"object_type": "Headframe"},
-                        ]
-                    }
-                ]
-            }
+def test_extract_fiber_structure_map_empty():
+    assert _extract_fiber_structure_map({}) == {}
+
+
+def test_extract_fiber_structure_map_missing_acronym_becomes_missing():
+    record = {
+        "procedures": {
+            "subject_procedures": [
+                {
+                    "procedures": [
+                        {
+                            "object_type": "Probe implant",
+                            "implanted_device": {"name": "Fiber_0"},
+                            "device_config": {},
+                        }
+                    ]
+                }
+            ]
         }
-        result = _extract_fiber_structure_map(record)
-        self.assertEqual(result, {})
+    }
+    assert _extract_fiber_structure_map(record) == {"Fiber_0": "missing"}
 
-    def test_none_targeted_structure(self):
-        """Test fiber with no targeted structure returns None acronym."""
-        record = {
-            "procedures": {
-                "subject_procedures": [
-                    {
-                        "procedures": [
-                            {
-                                "object_type": "Probe implant",
-                                "implanted_device": {"name": "Fiber_0"},
-                                "device_config": {},
-                            }
-                        ]
-                    }
-                ]
-            }
+
+def test_extract_fiber_structure_map_root_becomes_missing():
+    record = {
+        "procedures": {
+            "subject_procedures": [
+                {
+                    "procedures": [
+                        {
+                            "object_type": "Probe implant",
+                            "implanted_device": {"name": "Fiber_0"},
+                            "device_config": {"primary_targeted_structure": {"acronym": "root"}},
+                        }
+                    ]
+                }
+            ]
         }
-        result = _extract_fiber_structure_map(record)
-        self.assertEqual(result, {"Fiber_0": None})
+    }
+    assert _extract_fiber_structure_map(record) == {"Fiber_0": "missing"}
 
 
-class TestExtractFiberChannelMap(unittest.TestCase):
-    """Tests for _extract_fiber_channel_map."""
-
-    def test_extracts_intended_measurement(self):
-        """Test intended measurement extracted from patch cord configs."""
-        result = _extract_fiber_channel_map(EXAMPLE_RECORD)
-        self.assertEqual(result, {"Fiber 0": "DA", "Fiber 1": "5-HT"})
-
-    def test_empty_acquisition(self):
-        """Test returns empty dict when no acquisition present."""
-        result = _extract_fiber_channel_map({})
-        self.assertEqual(result, {})
-
-    def test_skips_non_patch_cord_configs(self):
-        """Test non-patch-cord configurations are ignored."""
-        record = {
-            "acquisition": {
-                "data_streams": [
-                    {
-                        "configurations": [
-                            {"object_type": "Detector config", "device_name": "camera"},
-                        ]
-                    }
-                ]
-            }
+def test_extract_fiber_structure_map_skips_non_probe_implant():
+    record = {
+        "procedures": {
+            "subject_procedures": [{"procedures": [{"object_type": "Headframe"}]}]
         }
-        result = _extract_fiber_channel_map(record)
-        self.assertEqual(result, {})
+    }
+    assert _extract_fiber_structure_map(record) == {}
 
-    def test_null_intended_measurement(self):
-        """Test null intended_measurement is stored as None."""
-        record = {
-            "acquisition": {
-                "data_streams": [
-                    {
-                        "configurations": [
-                            {
-                                "object_type": "Patch cord config",
-                                "device_name": "Patch Cord A",
-                                "channels": [
-                                    {"channel_name": "Fiber 0_green", "intended_measurement": None}
-                                ],
-                            }
-                        ]
-                    }
-                ]
-            }
+
+def test_extract_fiber_structure_map_real_example(real_record):
+    result = _extract_fiber_structure_map(real_record)
+    assert "Fiber_0" in result
+    assert result["Fiber_0"] == "PL"
+    assert result["Fiber_2"] == "ACB"
+
+
+# --- _extract_fiber_channel_entries ---
+
+def test_extract_fiber_channel_entries_resolves_all_fibers():
+    fiber_names = {"Fiber_0", "Fiber_1"}
+    entries = _extract_fiber_channel_entries(SYNTHETIC_RECORD, fiber_names)
+    fibers = [e[0] for e in entries]
+    assert "missing" not in fibers
+    assert "Fiber_0" in fibers
+    assert "Fiber_1" in fibers
+
+
+def test_extract_fiber_channel_entries_space_underscore_mismatch():
+    """Connections use 'Fiber 0' (space); fiber_names has 'Fiber_0' (underscore). Must match."""
+    fiber_names = {"Fiber_0"}
+    entries = _extract_fiber_channel_entries(SYNTHETIC_RECORD, fiber_names)
+    cord0 = [e for e in entries if e[1] == "Patch Cord 0"]
+    assert len(cord0) > 0
+    assert cord0[0][0] == "Fiber_0"
+
+
+def test_extract_fiber_channel_entries_detector_connection_does_not_clobber():
+    """Patch Cord 0 also connects to Green CMOS — must not overwrite the fiber mapping."""
+    fiber_names = {"Fiber_0", "Fiber_1"}
+    entries = _extract_fiber_channel_entries(SYNTHETIC_RECORD, fiber_names)
+    for fiber, patch_cord, _, _ in entries:
+        if patch_cord == "Patch Cord 0":
+            assert fiber == "Fiber_0"
+
+
+def test_extract_fiber_channel_entries_returns_all_channels():
+    fiber_names = {"Fiber_0", "Fiber_1"}
+    entries = _extract_fiber_channel_entries(SYNTHETIC_RECORD, fiber_names)
+    # 2 channels on Patch Cord 0, 1 on Patch Cord 1
+    assert len(entries) == 3
+
+
+def test_extract_fiber_channel_entries_null_intended_measurement_becomes_missing():
+    record = {
+        "acquisition": {
+            "data_streams": [
+                {
+                    "connections": [{"source_device": "Patch Cord 0", "target_device": "Fiber_0"}],
+                    "configurations": [
+                        {
+                            "object_type": "Patch cord config",
+                            "device_name": "Patch Cord 0",
+                            "channels": [{"channel_name": "Fiber_0_Green", "intended_measurement": None}],
+                        }
+                    ],
+                }
+            ]
         }
-        result = _extract_fiber_channel_map(record)
-        self.assertIsNone(result["Fiber 0"])
+    }
+    entries = _extract_fiber_channel_entries(record, {"Fiber_0"})
+    assert entries[0][3] == "missing"
 
 
-class TestFiberSortKey(unittest.TestCase):
-    """Tests for _fiber_sort_key."""
-
-    def test_extracts_trailing_integer(self):
-        """Test trailing integer extracted from fiber name."""
-        self.assertEqual(_fiber_sort_key("Fiber_0"), 0)
-        self.assertEqual(_fiber_sort_key("Fiber_3"), 3)
-        self.assertEqual(_fiber_sort_key("Fiber_12"), 12)
-
-    def test_no_integer_returns_zero(self):
-        """Test returns 0 when no integer in name."""
-        self.assertEqual(_fiber_sort_key("Fiber"), 0)
-
-
-class TestLookupChannel(unittest.TestCase):
-    """Tests for _lookup_channel."""
-
-    def test_exact_match(self):
-        """Test exact key match returns value."""
-        self.assertEqual(_lookup_channel("Fiber_0", {"Fiber_0": "DA"}), "DA")
-
-    def test_space_variant_fallback(self):
-        """Test underscore-to-space normalization finds key."""
-        self.assertEqual(_lookup_channel("Fiber_0", {"Fiber 0": "DA"}), "DA")
-
-    def test_missing_returns_none(self):
-        """Test missing key returns None."""
-        self.assertIsNone(_lookup_channel("Fiber_5", {"Fiber 0": "DA"}))
-
-
-class TestBuildFibRows(unittest.TestCase):
-    """Tests for _build_fib_rows."""
-
-    def test_builds_one_row_per_asset(self):
-        """Test one row produced per asset, not per fiber."""
-        rows = _build_fib_rows([EXAMPLE_RECORD])
-        self.assertEqual(len(rows), 1)
-
-    def test_row_has_asset_name(self):
-        """Test row contains asset_name."""
-        rows = _build_fib_rows([EXAMPLE_RECORD])
-        self.assertEqual(rows[0]["asset_name"], "behavior_854147_2026-05-18_13-14-35")
-
-    def test_row_has_fiber_columns(self):
-        """Test row has fiber_N_targeted_structure and fiber_N_intended_measurement for each fiber slot."""
-        rows = _build_fib_rows([EXAMPLE_RECORD])
-        row = rows[0]
-        for i in range(MAX_FIBERS):
-            self.assertIn(f"fiber_{i}_targeted_structure", row)
-            self.assertIn(f"fiber_{i}_intended_measurement", row)
-
-    def test_fiber_values_correct(self):
-        """Test fiber columns populated correctly from procedures and acquisition."""
-        rows = _build_fib_rows([EXAMPLE_RECORD])
-        row = rows[0]
-        self.assertEqual(row["fiber_0_targeted_structure"], "ACB")
-        self.assertEqual(row["fiber_0_intended_measurement"], "DA")
-        self.assertEqual(row["fiber_1_targeted_structure"], "PIR")
-        self.assertEqual(row["fiber_1_intended_measurement"], "5-HT")
-
-    def test_unused_fiber_slots_are_none(self):
-        """Test fiber columns beyond available fibers are None."""
-        rows = _build_fib_rows([EXAMPLE_RECORD])
-        row = rows[0]
-        # EXAMPLE_RECORD has 2 fibers; slots 2 and 3 should be None
-        self.assertIsNone(row["fiber_2_targeted_structure"])
-        self.assertIsNone(row["fiber_2_intended_measurement"])
-        self.assertIsNone(row["fiber_3_targeted_structure"])
-        self.assertIsNone(row["fiber_3_intended_measurement"])
-
-    def test_empty_records(self):
-        """Test empty records list returns empty rows list."""
-        rows = _build_fib_rows([])
-        self.assertEqual(rows, [])
-
-    def test_multiple_assets_produce_multiple_rows(self):
-        """Test two assets produce two rows."""
-        record2 = {**EXAMPLE_RECORD, "name": "behavior_999_2026-01-01"}
-        rows = _build_fib_rows([EXAMPLE_RECORD, record2])
-        self.assertEqual(len(rows), 2)
-
-    def test_fibers_sorted_by_index(self):
-        """Test fibers are ordered by their trailing integer regardless of insertion order."""
-        record = {
-            "name": "asset_x",
-            "procedures": {
-                "subject_procedures": [
-                    {
-                        "procedures": [
-                            {
-                                "object_type": "Probe implant",
-                                "implanted_device": {"name": "Fiber_1"},
-                                "device_config": {"primary_targeted_structure": {"acronym": "PIR"}},
-                            },
-                            {
-                                "object_type": "Probe implant",
-                                "implanted_device": {"name": "Fiber_0"},
-                                "device_config": {"primary_targeted_structure": {"acronym": "ACB"}},
-                            },
-                        ]
-                    }
-                ]
-            },
-            "acquisition": {"data_streams": []},
+def test_extract_fiber_channel_entries_skips_patch_cord_with_no_procedure_fiber():
+    """Patch cord connected to a fiber not in procedures should produce no rows."""
+    record = {
+        "acquisition": {
+            "data_streams": [
+                {
+                    "connections": [
+                        {"source_device": "Patch Cord 0", "target_device": "Fiber 0"},
+                    ],
+                    "configurations": [
+                        {
+                            "object_type": "Patch cord config",
+                            "device_name": "Patch Cord 0",
+                            "channels": [{"channel_name": "Fiber_0_Green", "intended_measurement": "calcium"}],
+                        }
+                    ],
+                }
+            ]
         }
-        rows = _build_fib_rows([record])
-        row = rows[0]
-        self.assertEqual(row["fiber_0_targeted_structure"], "ACB")
-        self.assertEqual(row["fiber_1_targeted_structure"], "PIR")
+    }
+    # fiber_names is empty — Fiber_0 not in procedures
+    entries = _extract_fiber_channel_entries(record, set())
+    assert entries == []
 
 
-class TestFetchFibRecords(unittest.TestCase):
-    """Tests for _fetch_fib_records."""
-
-    @patch("zombie_squirrel.acorn_helpers.platform_fib.MetadataDbClient")
-    def test_fetches_in_batches(self, mock_client_class):
-        """Test batching logic sends multiple requests for >100 assets."""
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-        mock_client.retrieve_docdb_records.return_value = []
-
-        names = [f"asset_{i}" for i in range(250)]
-        _fetch_fib_records(names)
-
-        self.assertEqual(mock_client.retrieve_docdb_records.call_count, 3)
-
-    @patch("zombie_squirrel.acorn_helpers.platform_fib.MetadataDbClient")
-    def test_returns_all_records(self, mock_client_class):
-        """Test records from all batches are combined."""
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-        mock_client.retrieve_docdb_records.side_effect = [
-            [{"name": "asset_0"}],
-            [{"name": "asset_100"}],
-        ]
-
-        names = [f"asset_{i}" for i in range(150)]
-        result = _fetch_fib_records(names)
-
-        self.assertEqual(len(result), 2)
+def test_extract_fiber_channel_entries_empty_acquisition():
+    assert _extract_fiber_channel_entries({}, {"Fiber_0"}) == []
 
 
-class TestPlatformFib(unittest.TestCase):
-    """Tests for platform_fib acorn function."""
-
-    @patch("zombie_squirrel.acorn_helpers.platform_fib.acorns.TREE")
-    def test_cache_hit(self, mock_tree):
-        """Test returning cached DataFrame when cache is populated."""
-        cached_df = pd.DataFrame(
-            {
-                "asset_name": ["behavior_123"],
-                "fiber_0_targeted_structure": ["ACB"],
-                "fiber_0_intended_measurement": ["DA"],
-            }
-        )
-        mock_tree.scurry.return_value = cached_df
-
-        result = platform_fib(force_update=False)
-
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result.iloc[0]["fiber_0_targeted_structure"], "ACB")
-
-    @patch("zombie_squirrel.acorn_helpers.platform_fib.acorns.TREE")
-    def test_empty_cache_raises_error(self, mock_tree):
-        """Test empty cache raises ValueError without force_update."""
-        mock_tree.scurry.return_value = pd.DataFrame()
-
-        with self.assertRaises(ValueError) as ctx:
-            platform_fib(force_update=False)
-
-        self.assertIn("Cache is empty", str(ctx.exception))
-        self.assertIn("force_update=True", str(ctx.exception))
-
-    @patch("zombie_squirrel.acorn_helpers.platform_fib.MetadataDbClient")
-    @patch("zombie_squirrel.acorn_helpers.platform_fib.asset_basics")
-    @patch("zombie_squirrel.acorn_helpers.platform_fib.acorns.TREE")
-    def test_force_update_fetches_and_caches(self, mock_tree, mock_basics, mock_client_class):
-        """Test force_update fetches from DB and stores result in cache."""
-        mock_tree.scurry.return_value = pd.DataFrame()
-        mock_basics.return_value = pd.DataFrame(
-            {
-                "name": ["behavior_854147_2026-05-18_13-14-35"],
-                "modalities": ["fib, behavior"],
-            }
-        )
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-        mock_client.retrieve_docdb_records.return_value = [EXAMPLE_RECORD]
-
-        result = platform_fib(force_update=True)
-
-        # one row per asset
-        self.assertEqual(len(result), 1)
-        mock_tree.hide.assert_called_once()
-
-    @patch("zombie_squirrel.acorn_helpers.platform_fib.MetadataDbClient")
-    @patch("zombie_squirrel.acorn_helpers.platform_fib.asset_basics")
-    @patch("zombie_squirrel.acorn_helpers.platform_fib.acorns.TREE")
-    def test_filters_to_fib_modality(self, mock_tree, mock_basics, mock_client_class):
-        """Test only assets with 'fib' modality are fetched."""
-        mock_tree.scurry.return_value = pd.DataFrame()
-        mock_basics.return_value = pd.DataFrame(
-            {
-                "name": ["fib_asset", "spim_asset", "behavior_asset"],
-                "modalities": ["fib, behavior", "SPIM", "behavior"],
-            }
-        )
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-        mock_client.retrieve_docdb_records.return_value = []
-
-        platform_fib(force_update=True)
-
-        call_args = mock_client.retrieve_docdb_records.call_args
-        if call_args:
-            names_filter = call_args[1]["filter_query"]["name"]["$in"]
-            self.assertIn("fib_asset", names_filter)
-            self.assertNotIn("spim_asset", names_filter)
-            self.assertNotIn("behavior_asset", names_filter)
+def test_extract_fiber_channel_entries_real_example(real_record):
+    fiber_names = set(_extract_fiber_structure_map(real_record).keys())
+    entries = _extract_fiber_channel_entries(real_record, fiber_names)
+    assert len(entries) > 0
+    fibers = {e[0] for e in entries}
+    assert "missing" not in fibers
+    assert "Fiber_0" in fibers
 
 
-class TestPlatformFibColumns(unittest.TestCase):
-    """Tests for platform_fib_columns."""
+# --- _build_fib_rows ---
 
-    def test_returns_correct_count(self):
-        """Test column list has one asset_name plus two columns per fiber slot."""
-        cols = platform_fib_columns()
-        self.assertEqual(len(cols), 1 + MAX_FIBERS * 2)
-
-    def test_column_names(self):
-        """Test column names match expected output schema."""
-        cols = platform_fib_columns()
-        names = [c.name for c in cols]
-        self.assertIn("asset_name", names)
-        for i in range(MAX_FIBERS):
-            self.assertIn(f"fiber_{i}_targeted_structure", names)
-            self.assertIn(f"fiber_{i}_intended_measurement", names)
+def test_build_fib_rows_one_row_per_fiber_channel():
+    rows = _build_fib_rows([SYNTHETIC_RECORD])
+    # 2 channels on Fiber_0, 1 on Fiber_1
+    assert len(rows) == 3
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_build_fib_rows_keys():
+    rows = _build_fib_rows([SYNTHETIC_RECORD])
+    assert set(rows[0].keys()) == {"asset_name", "fiber", "patch_cord", "channel", "intended_measurement", "targeted_structure"}
+
+
+def test_build_fib_rows_targeted_structure():
+    rows = _build_fib_rows([SYNTHETIC_RECORD])
+    by_fiber = {r["fiber"]: r["targeted_structure"] for r in rows}
+    assert by_fiber["Fiber_0"] == "ACB"
+    assert by_fiber["Fiber_1"] == "PIR"
+
+
+def test_build_fib_rows_empty():
+    assert _build_fib_rows([]) == []
+
+
+def test_build_fib_rows_multiple_assets():
+    record2 = {**SYNTHETIC_RECORD, "name": "test_asset_002"}
+    rows = _build_fib_rows([SYNTHETIC_RECORD, record2])
+    names = {r["asset_name"] for r in rows}
+    assert "test_asset_001" in names
+    assert "test_asset_002" in names
+
+
+def test_build_fib_rows_real_example(real_record):
+    rows = _build_fib_rows([real_record])
+    assert len(rows) > 0
+    df = pd.DataFrame(rows)
+    assert "missing" not in df["fiber"].values
+    assert not df["targeted_structure"].isna().any()
+
+
+# --- _fetch_fib_records ---
+
+@patch("zombie_squirrel.acorn_helpers.platform_fib.MetadataDbClient")
+def test_fetch_fib_records_batches(mock_client_class):
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_client.retrieve_docdb_records.return_value = []
+    _fetch_fib_records([f"asset_{i}" for i in range(250)])
+    assert mock_client.retrieve_docdb_records.call_count == 3
+
+
+@patch("zombie_squirrel.acorn_helpers.platform_fib.MetadataDbClient")
+def test_fetch_fib_records_combines_batches(mock_client_class):
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_client.retrieve_docdb_records.side_effect = [[{"name": "a"}], [{"name": "b"}]]
+    result = _fetch_fib_records([f"asset_{i}" for i in range(150)])
+    assert len(result) == 2
+
+
+# --- platform_fib ---
+
+@patch("zombie_squirrel.acorn_helpers.platform_fib.acorns.TREE")
+def test_platform_fib_empty_cache_raises(mock_tree):
+    mock_tree.scurry.return_value = pd.DataFrame()
+    with pytest.raises(ValueError, match="Cache is empty"):
+        platform_fib(force_update=False)
+
+
+@patch("zombie_squirrel.acorn_helpers.platform_fib.acorns.TREE")
+def test_platform_fib_cache_hit(mock_tree):
+    cached = pd.DataFrame({"asset_name": ["x"], "fiber": ["Fiber_0"], "patch_cord": ["Patch Cord 0"],
+                            "channel": ["Fiber_0_Green"], "intended_measurement": ["calcium"],
+                            "targeted_structure": ["ACB"]})
+    mock_tree.scurry.return_value = cached
+    result = platform_fib(force_update=False)
+    assert len(result) == 1
+
+
+@patch("zombie_squirrel.acorn_helpers.platform_fib.MetadataDbClient")
+@patch("zombie_squirrel.acorn_helpers.platform_fib.asset_basics")
+@patch("zombie_squirrel.acorn_helpers.platform_fib.acorns.TREE")
+def test_platform_fib_force_update(mock_tree, mock_basics, mock_client_class):
+    mock_tree.scurry.return_value = pd.DataFrame()
+    mock_basics.return_value = pd.DataFrame({"name": ["test_asset_001"], "modalities": ["fib"]})
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_client.retrieve_docdb_records.return_value = [SYNTHETIC_RECORD]
+    result = platform_fib(force_update=True)
+    assert len(result) > 0
+    mock_tree.hide.assert_called_once()
+
+
+@patch("zombie_squirrel.acorn_helpers.platform_fib.MetadataDbClient")
+@patch("zombie_squirrel.acorn_helpers.platform_fib.asset_basics")
+@patch("zombie_squirrel.acorn_helpers.platform_fib.acorns.TREE")
+def test_platform_fib_filters_fib_modality(mock_tree, mock_basics, mock_client_class):
+    mock_tree.scurry.return_value = pd.DataFrame()
+    mock_basics.return_value = pd.DataFrame(
+        {"name": ["fib_asset", "spim_asset"], "modalities": ["fib", "SPIM"]}
+    )
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_client.retrieve_docdb_records.return_value = []
+    platform_fib(force_update=True)
+    call_args = mock_client.retrieve_docdb_records.call_args
+    if call_args:
+        names_filter = call_args[1]["filter_query"]["name"]["$in"]
+        assert "fib_asset" in names_filter
+        assert "spim_asset" not in names_filter
+
+
+# --- platform_fib_columns ---
+
+def test_platform_fib_columns_names():
+    names = [c.name for c in platform_fib_columns()]
+    assert "asset_name" in names
+    assert "fiber" in names
+    assert "patch_cord" in names
+    assert "channel" in names
+    assert "intended_measurement" in names
+    assert "targeted_structure" in names

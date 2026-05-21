@@ -22,6 +22,7 @@ class TestHideAcorns(unittest.TestCase):
             "raw_to_derived": mock_r2d,
             "quality_control": mock_qc,
             "assets_smartspim": mock_smartspim,
+            "metadata_upgrade": MagicMock(),
             "platform_fib": MagicMock(),
         }
 
@@ -139,7 +140,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
 
         payload = json.loads(mock_tree.plant.call_args[0][1])
         self.assertIn("acorns", payload)
-        self.assertEqual(len(payload["acorns"]), 9)
+        self.assertEqual(len(payload["acorns"]), 8)
 
     @patch("zombie_squirrel.sync.TREE")
     def test_published_json_acorn_names(self, mock_tree):
@@ -192,7 +193,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
 
         publish_squirrel_metadata()
 
-        self.assertEqual(mock_tree.get_location.call_count, 9)
+        self.assertEqual(mock_tree.get_location.call_count, 8)
 
     @patch("zombie_squirrel.sync.TREE")
     def test_qc_location_uses_partitioned_flag(self, mock_tree):
@@ -241,6 +242,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
             "raw_to_derived": mock_r2d,
             "quality_control": mock_qc,
             "assets_smartspim": mock_smartspim,
+            "metadata_upgrade": MagicMock(),
             "platform_fib": mock_fib,
         }[x]
 
@@ -280,6 +282,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
             "raw_to_derived": mock_r2d,
             "quality_control": mock_qc,
             "assets_smartspim": MagicMock(),
+            "metadata_upgrade": MagicMock(),
             "platform_fib": MagicMock(),
         }[x]
 
@@ -316,6 +319,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
             "raw_to_derived": mock_r2d,
             "quality_control": mock_qc,
             "assets_smartspim": MagicMock(),
+            "metadata_upgrade": MagicMock(),
             "platform_fib": MagicMock(),
         }[x]
 
@@ -348,6 +352,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
             "raw_to_derived": mock_r2d,
             "quality_control": mock_qc,
             "assets_smartspim": MagicMock(),
+            "metadata_upgrade": MagicMock(),
             "platform_fib": MagicMock(),
         }[x]
 
@@ -377,6 +382,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
             "raw_to_derived": mock_r2d,
             "quality_control": mock_qc,
             "assets_smartspim": MagicMock(),
+            "metadata_upgrade": MagicMock(),
             "platform_fib": MagicMock(),
         }[x]
 

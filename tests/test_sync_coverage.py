@@ -40,6 +40,8 @@ class TestHideAcornsExceptionHandling(unittest.TestCase):
             "source_data": mock_d2r,
             "quality_control": mock_qc,
             "assets_smartspim": MagicMock(),
+            "metadata_upgrade": MagicMock(),
+            "platform_fib": MagicMock(),
         }
         mock_registry.__getitem__.side_effect = registry_dict.__getitem__
 

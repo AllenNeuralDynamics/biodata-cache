@@ -42,20 +42,20 @@ EXAMPLE_RECORD = {
 class TestLinkHelpers(unittest.TestCase):
     def test_stitched_link(self):
         result = _stitched_link(LOCATION)
-        self.assertEqual(result, f"https://neuroglancer-demo.appspot.com/#!{LOCATION}/neuroglancer_config.json")
+        self.assertEqual(result, f"https://allen.neuroglass.io/new#!{LOCATION}/neuroglancer_config.json")
 
     def test_segmentation_link(self):
         result = _segmentation_link(LOCATION, "Ex_561_Em_600")
         self.assertEqual(
             result,
-            f"https://neuroglancer-demo.appspot.com/#!{LOCATION}/image_cell_segmentation/Ex_561_Em_600/visualization/neuroglancer_config.json",
+            f"https://allen.neuroglass.io/new#!{LOCATION}/image_cell_segmentation/Ex_561_Em_600/visualization/neuroglancer_config.json",
         )
 
     def test_quantification_link(self):
         result = _quantification_link(LOCATION, "Ex_561_Em_600")
         self.assertEqual(
             result,
-            f"https://neuroglancer-demo.appspot.com/#!{LOCATION}/image_cell_quantification/Ex_561_Em_600/visualization/neuroglancer_config.json",
+            f"https://allen.neuroglass.io/new#!{LOCATION}/image_cell_quantification/Ex_561_Em_600/visualization/neuroglancer_config.json",
         )
 
 
