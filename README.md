@@ -3,8 +3,8 @@
 [![License](https://img.shields.io/badge/license-MIT-brightgreen)](LICENSE)
 ![Code Style](https://img.shields.io/badge/code%20style-black-black)
 [![semantic-release: angular](https://img.shields.io/badge/semantic--release-angular-e10079?logo=semantic-release)](https://github.com/semantic-release/semantic-release)
-![Interrogate](https://img.shields.io/badge/interrogate-90.4%25-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)
+![Interrogate](https://img.shields.io/badge/interrogate-84.6%25-yellow)
+![Coverage](https://img.shields.io/badge/coverage-88%25-yellow)
 ![Python](https://img.shields.io/badge/python->=3.10-blue?logo=python)
 
 <img src="zombie-squirrel_logo.png" width="400" alt="Logo (image from ChatGPT)">
