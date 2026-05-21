@@ -22,6 +22,7 @@ class TestHideAcorns(unittest.TestCase):
             "raw_to_derived": mock_r2d,
             "quality_control": mock_qc,
             "assets_smartspim": mock_smartspim,
+            "platform_fib": MagicMock(),
         }
 
     @patch("zombie_squirrel.sync.publish_squirrel_metadata")
@@ -130,15 +131,15 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
         self.assertEqual(key, "squirrel.json")
 
     @patch("zombie_squirrel.sync.TREE")
-    def test_published_json_contains_six_acorns(self, mock_tree):
-        """Test published JSON contains six acorns."""
+    def test_published_json_contains_nine_acorns(self, mock_tree):
+        """Test published JSON contains nine acorns."""
         mock_tree.get_location.return_value = "s3://bucket/path"
 
         publish_squirrel_metadata()
 
         payload = json.loads(mock_tree.plant.call_args[0][1])
         self.assertIn("acorns", payload)
-        self.assertEqual(len(payload["acorns"]), 6)
+        self.assertEqual(len(payload["acorns"]), 9)
 
     @patch("zombie_squirrel.sync.TREE")
     def test_published_json_acorn_names(self, mock_tree):
@@ -155,6 +156,9 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
         self.assertIn("source_data", names)
         self.assertIn("quality_control", names)
         self.assertIn("assets_smartspim", names)
+        self.assertIn("metadata_upgrade", names)
+        self.assertIn("foraging_sessions", names)
+        self.assertIn("platform_fib", names)
 
     @patch("zombie_squirrel.sync.TREE")
     def test_qc_acorn_is_partitioned(self, mock_tree):
@@ -189,7 +193,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
 
         publish_squirrel_metadata()
 
-        self.assertEqual(mock_tree.get_location.call_count, 6)
+        self.assertEqual(mock_tree.get_location.call_count, 9)
 
     @patch("zombie_squirrel.sync.TREE")
     def test_qc_location_uses_partitioned_flag(self, mock_tree):
@@ -229,6 +233,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
         mock_basics.return_value = mock_df
 
         mock_smartspim = MagicMock()
+        mock_fib = MagicMock()
         mock_registry.__getitem__.side_effect = lambda x: {
             "unique_project_names": mock_upn,
             "unique_subject_ids": mock_usi,
@@ -237,6 +242,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
             "raw_to_derived": mock_r2d,
             "quality_control": mock_qc,
             "assets_smartspim": mock_smartspim,
+            "platform_fib": mock_fib,
         }[x]
 
         mock_tree.get_location.return_value = "s3://test-bucket/test"
@@ -250,6 +256,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
         assert mock_qc.call_count == 2
         mock_qc.assert_any_call(subject_id="subject1", force_update=True)
         mock_qc.assert_any_call(subject_id="subject2", force_update=True)
+        mock_fib.assert_called_once_with(force_update=True)
 
     @patch("zombie_squirrel.sync.TREE")
     @patch("zombie_squirrel.sync.ACORN_REGISTRY")
@@ -274,6 +281,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
             "raw_to_derived": mock_r2d,
             "quality_control": mock_qc,
             "assets_smartspim": MagicMock(),
+            "platform_fib": MagicMock(),
         }[x]
 
         mock_tree.get_location.return_value = "s3://test-bucket/test"
@@ -309,6 +317,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
             "raw_to_derived": mock_r2d,
             "quality_control": mock_qc,
             "assets_smartspim": MagicMock(),
+            "platform_fib": MagicMock(),
         }[x]
 
         mock_tree.get_location.return_value = "s3://test-bucket/test"
@@ -340,6 +349,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
             "raw_to_derived": mock_r2d,
             "quality_control": mock_qc,
             "assets_smartspim": MagicMock(),
+            "platform_fib": MagicMock(),
         }[x]
 
         mock_tree.get_location.return_value = "s3://test-bucket/test"
@@ -368,6 +378,7 @@ class TestPublishSquirrelMetadata(unittest.TestCase):
             "raw_to_derived": mock_r2d,
             "quality_control": mock_qc,
             "assets_smartspim": MagicMock(),
+            "platform_fib": MagicMock(),
         }[x]
 
         with self.assertRaises(Exception) as context:

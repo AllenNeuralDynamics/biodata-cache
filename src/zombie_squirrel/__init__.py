@@ -10,6 +10,7 @@ __version__ = "0.19.0"
 
 from zombie_squirrel.acorn_helpers.asset_basics import asset_basics  # noqa: F401
 from zombie_squirrel.acorn_helpers.assets_smartspim import assets_smartspim  # noqa: F401
+from zombie_squirrel.acorn_helpers.platform_fib import platform_fib  # noqa: F401
 from zombie_squirrel.acorn_helpers.custom import custom  # noqa: F401
 from zombie_squirrel.acorn_helpers.metadata_upgrade import metadata_upgrade  # noqa: F401
 from zombie_squirrel.acorn_helpers.qc import qc, qc_columns  # noqa: F401

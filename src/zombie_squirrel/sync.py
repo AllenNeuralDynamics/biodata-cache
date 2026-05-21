@@ -4,6 +4,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .acorn_helpers.asset_basics import asset_basics_columns
 from .acorn_helpers.assets_smartspim import assets_smartspim_columns
+from .acorn_helpers.foraging_sessions import foraging_sessions_columns
+from .acorn_helpers.platform_fib import platform_fib_columns
 from .acorn_helpers.metadata_upgrade import metadata_upgrade_columns
 from .acorn_helpers.qc import qc_columns
 from .acorn_helpers.source_data import source_data_columns
@@ -77,6 +79,22 @@ def publish_squirrel_metadata() -> None:
             type=AcornType.metadata,
             columns=metadata_upgrade_columns(),
         ),
+        Acorn(
+            name=NAMES["foraging"],
+            description="Pre-computed foraging session scores with percentile ranks and rolling averages",
+            location=TREE.get_location(NAMES["foraging"]),
+            partitioned=False,
+            type=AcornType.metadata,
+            columns=foraging_sessions_columns(),
+        ),
+        Acorn(
+            name=NAMES["fib"],
+            description="Fiber photometry assets with per-fiber targeted structure and intended channel measurement",
+            location=TREE.get_location(NAMES["fib"]),
+            partitioned=False,
+            type=AcornType.metadata,
+            columns=platform_fib_columns(),
+        ),
     ]
     squirrel = Squirrel(acorns=acorn_list)
     TREE.plant("squirrel.json", squirrel.model_dump_json())
@@ -114,5 +132,6 @@ def hide_acorns():
                 qc_acorn(subject_id=subject_id, force_update=True)
 
     ACORN_REGISTRY[NAMES["smartspim"]](force_update=True)
+    ACORN_REGISTRY[NAMES["fib"]](force_update=True)
 
     publish_squirrel_metadata()
