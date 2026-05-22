@@ -43,6 +43,7 @@ NAMES = {
     "smartspim": "assets_smartspim",
     "upgrade": "metadata_upgrade",
     "fib": "platform_fib",
+    "core": "metadata_core",
 }
 
 ACORN_REGISTRY: dict[str, Callable[[], Any]] = {}
