@@ -64,6 +64,7 @@ def _fetch_asset_metadata(asset_names: list[str]) -> dict[str, dict]:
     )
     fields = [
         "name",
+        "data_description.institution",
         "processing.data_processes",
         "location",
     ]
@@ -99,6 +100,8 @@ def _build_rows(
         if processed:
             record = metadata.get(stitched_name, {})
             location = record.get("location", "")
+            institution_obj = record.get("data_description", {}).get("institution", {})
+            institution = institution_obj.get("abbreviation", None) if institution_obj else None
             data_processes = record.get("processing", {}).get("data_processes", []) or []
             processing_end_time = data_processes[-1].get("end_date_time", None) if data_processes else None
             stitch_link = _stitched_link(location) if location else None
@@ -110,6 +113,7 @@ def _build_rows(
                         "name": stitched_name,
                         "raw_name": raw_name,
                         "processed": True,
+                        "institution": institution,
                         "processing_end_time": processing_end_time,
                         "stitched_link": stitch_link,
                         "raw_link": raw_link,
@@ -122,6 +126,7 @@ def _build_rows(
                     "name": stitched_name,
                     "raw_name": raw_name,
                     "processed": True,
+                    "institution": institution,
                     "processing_end_time": processing_end_time,
                     "stitched_link": stitch_link,
                     "raw_link": raw_link,
@@ -134,6 +139,7 @@ def _build_rows(
                 "name": raw_name,
                 "raw_name": raw_name,
                 "processed": False,
+                "institution": None,
                 "processing_end_time": None,
                 "stitched_link": None,
                 "raw_link": raw_link,
@@ -233,6 +239,7 @@ def assets_smartspim_columns() -> list[Column]:
         Column(name="name", description="Asset name (stitched if available, otherwise raw)"),
         Column(name="raw_name", description="Raw asset name"),
         Column(name="processed", description="Whether a stitched derived asset exists"),
+        Column(name="institution", description="Institution abbreviation"),
         Column(name="processing_end_time", description="Processing end time for stitched asset"),
         Column(name="stitched_link", description="Neuroglancer link to stitched asset"),
         Column(name="raw_link", description="Neuroglancer link from raw asset's SPIM/derivatives/neuroglancer_config.json"),

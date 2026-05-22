@@ -27,6 +27,7 @@ EXAMPLE_RECORD = {
     "_id": "abc123",
     "name": STITCHED_NAME,
     "location": LOCATION,
+    "data_description": {"institution": {"abbreviation": "AIBS"}},
     "processing": {"data_processes": [{"end_date_time": "2026-01-01T10:00:00"}, {"end_date_time": "2026-01-02T12:00:00"}]},
 }
 
@@ -158,6 +159,7 @@ def test_build_rows_processed_row_fields_populated(mock_list_channels):
     row = rows[0]
     assert row["name"] == STITCHED_NAME
     assert row["raw_name"] == RAW_NAME
+    assert row["institution"] == "AIBS"
     assert row["processing_end_time"] == "2026-01-02T12:00:00"
     assert row["stitched_link"] == _stitched_link(LOCATION)
     assert row["raw_link"] == raw_link
@@ -301,6 +303,6 @@ def test_filters_only_raw_spim_assets(mock_tree, mock_asset_basics, mock_source_
 
 def test_returns_expected_columns():
     assert [col.name for col in assets_smartspim_columns()] == [
-        "name", "raw_name", "processed", "processing_end_time",
+        "name", "raw_name", "processed", "institution", "processing_end_time",
         "stitched_link", "raw_link", "channel", "segmentation_link", "quantification_link",
     ]
