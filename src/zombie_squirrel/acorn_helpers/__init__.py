@@ -6,6 +6,7 @@ from zombie_squirrel.acorn_helpers import (  # noqa: F401
     qc,
     raw_to_derived,
     source_data,
+    unique_genotypes,
     unique_project_names,
     unique_subject_ids,
 )

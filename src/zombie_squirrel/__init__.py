@@ -19,6 +19,9 @@ from zombie_squirrel.acorn_helpers.source_data import source_data  # noqa: F401
 from zombie_squirrel.acorn_helpers.unique_project_names import (  # noqa: F401
     unique_project_names,
 )
+from zombie_squirrel.acorn_helpers.unique_genotypes import (  # noqa: F401
+    unique_genotypes,
+)
 from zombie_squirrel.acorn_helpers.unique_subject_ids import (  # noqa: F401
     unique_subject_ids,
 )

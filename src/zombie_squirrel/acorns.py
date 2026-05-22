@@ -35,6 +35,7 @@ else:  # pragma: no cover
 NAMES = {
     "upn": "unique_project_names",
     "usi": "unique_subject_ids",
+    "ugt": "unique_genotypes",
     "basics": "asset_basics",
     "d2r": "source_data",
     "r2d": "raw_to_derived",

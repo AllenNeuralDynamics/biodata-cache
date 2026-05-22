@@ -140,3 +140,4 @@ dmypy.json
 .github/copilot-instructions.md
 uv.lock
 *.lock
+uv.lock

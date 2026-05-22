@@ -1,15 +1,12 @@
 #!/usr/bin/env python
-"""Test runner that sets environment variables before importing test modules."""
+"""Test runner that delegates to pytest."""
 
-import os
+import subprocess
 import sys
-import unittest
-
-os.environ["FOREST_TYPE"] = "memory"
 
 if __name__ == "__main__":
-    loader = unittest.TestLoader()
-    suite = loader.discover("tests", pattern="test_*.py")
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-    sys.exit(0 if result.wasSuccessful() else 1)
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "tests", "-v"],
+        check=False,
+    )
+    sys.exit(result.returncode)

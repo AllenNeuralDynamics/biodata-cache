@@ -71,6 +71,9 @@ lint.ignore = [
     "E501", # line length (handled by formatter)
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.coverage.run]
 omit = ["*__init__*"]
 source = ["zombie_squirrel", "tests"]

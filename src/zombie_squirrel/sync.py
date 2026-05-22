@@ -8,6 +8,7 @@ from .acorn_helpers.platform_fib import platform_fib_columns
 from .acorn_helpers.metadata_upgrade import metadata_upgrade_columns
 from .acorn_helpers.qc import qc_columns
 from .acorn_helpers.source_data import source_data_columns
+from .acorn_helpers.unique_genotypes import unique_genotypes_columns
 from .acorn_helpers.unique_project_names import unique_project_names_columns
 from .acorn_helpers.unique_subject_ids import unique_subject_ids_columns
 from .acorns import ACORN_REGISTRY, NAMES, TREE
@@ -36,6 +37,14 @@ def publish_squirrel_metadata() -> None:
             partitioned=False,
             type=AcornType.metadata,
             columns=unique_subject_ids_columns(),
+        ),
+        Acorn(
+            name=NAMES["ugt"],
+            description="Unique genotypes across all assets where subject.subject_details.genotype is present",
+            location=TREE.get_location(NAMES["ugt"]),
+            partitioned=False,
+            type=AcornType.metadata,
+            columns=unique_genotypes_columns(),
         ),
         Acorn(
             name=NAMES["basics"],
@@ -101,6 +110,7 @@ def hide_acorns():
     """
     ACORN_REGISTRY[NAMES["upn"]](force_update=True)
     ACORN_REGISTRY[NAMES["usi"]](force_update=True)
+    ACORN_REGISTRY[NAMES["ugt"]](force_update=True)
 
     df_basics = ACORN_REGISTRY[NAMES["basics"]](force_update=True)
 

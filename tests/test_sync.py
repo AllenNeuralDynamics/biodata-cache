@@ -1,397 +1,317 @@
 """Unit tests for zombie_squirrel.sync module."""
 
 import json
-import unittest
 from unittest.mock import MagicMock, call, patch
 
 import pandas as pd
+import pytest
 
 from zombie_squirrel.sync import hide_acorns, publish_squirrel_metadata
 
 
-class TestHideAcorns(unittest.TestCase):
-    """Test hide_acorns function."""
+def _make_registry(mock_upn, mock_usi, mock_ugt, mock_basics, mock_d2r, mock_r2d, mock_qc, mock_smartspim):
+    return {
+        "unique_project_names": mock_upn,
+        "unique_subject_ids": mock_usi,
+        "unique_genotypes": mock_ugt,
+        "asset_basics": mock_basics,
+        "source_data": mock_d2r,
+        "raw_to_derived": mock_r2d,
+        "quality_control": mock_qc,
+        "assets_smartspim": mock_smartspim,
+        "metadata_upgrade": MagicMock(),
+        "platform_fib": MagicMock(),
+    }
 
-    def _make_registry(self, mock_upn, mock_usi, mock_basics, mock_d2r, mock_r2d, mock_qc, mock_smartspim):
-        """Create mock acorn registry dict."""
-        return {
-            "unique_project_names": mock_upn,
-            "unique_subject_ids": mock_usi,
-            "asset_basics": mock_basics,
-            "source_data": mock_d2r,
-            "raw_to_derived": mock_r2d,
-            "quality_control": mock_qc,
-            "assets_smartspim": mock_smartspim,
-            "metadata_upgrade": MagicMock(),
-            "platform_fib": MagicMock(),
-        }
 
-    @patch("zombie_squirrel.sync.publish_squirrel_metadata")
-    @patch("zombie_squirrel.sync.ACORN_REGISTRY")
-    def test_all_acorns_called_with_force_update(self, mock_registry, mock_publish):
-        """Test all acorns called with force_update flag."""
-        df_basics = pd.DataFrame({"subject_id": ["sub1"]})
-        mock_basics = MagicMock(return_value=df_basics)
-        mock_upn = MagicMock()
-        mock_usi = MagicMock()
-        mock_d2r = MagicMock()
-        mock_r2d = MagicMock()
-        mock_qc = MagicMock()
-        mock_smartspim = MagicMock()
-        mock_registry.__getitem__.side_effect = self._make_registry(
-            mock_upn, mock_usi, mock_basics, mock_d2r, mock_r2d, mock_qc, mock_smartspim
-        ).__getitem__
+# --- hide_acorns ---
 
+@patch("zombie_squirrel.sync.publish_squirrel_metadata")
+@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+def test_all_acorns_called_with_force_update(mock_registry, mock_publish):
+    df_basics = pd.DataFrame({"subject_id": ["sub1"]})
+    mock_basics = MagicMock(return_value=df_basics)
+    mock_upn, mock_usi, mock_ugt, mock_d2r, mock_r2d, mock_qc, mock_smartspim = (MagicMock() for _ in range(7))
+    mock_registry.__getitem__.side_effect = _make_registry(
+        mock_upn, mock_usi, mock_ugt, mock_basics, mock_d2r, mock_r2d, mock_qc, mock_smartspim
+    ).__getitem__
+
+    hide_acorns()
+
+    mock_upn.assert_called_once_with(force_update=True)
+    mock_usi.assert_called_once_with(force_update=True)
+    mock_ugt.assert_called_once_with(force_update=True)
+    mock_basics.assert_called_once_with(force_update=True)
+    mock_d2r.assert_called_once_with(force_update=True)
+    mock_r2d.assert_not_called()
+    mock_smartspim.assert_called_once_with(force_update=True)
+
+
+@patch("zombie_squirrel.sync.publish_squirrel_metadata")
+@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+def test_qc_called_per_subject(mock_registry, mock_publish):
+    df_basics = pd.DataFrame({"subject_id": ["sub1", "sub2", None]})
+    mock_basics = MagicMock(return_value=df_basics)
+    mock_qc = MagicMock()
+    mock_registry.__getitem__.side_effect = _make_registry(
+        MagicMock(), MagicMock(), MagicMock(), mock_basics, MagicMock(), MagicMock(), mock_qc, MagicMock()
+    ).__getitem__
+
+    hide_acorns()
+
+    mock_qc.assert_has_calls(
+        [call(subject_id="sub1", force_update=True), call(subject_id="sub2", force_update=True)],
+        any_order=True,
+    )
+    assert mock_qc.call_count == 2
+
+
+@patch("zombie_squirrel.sync.publish_squirrel_metadata")
+@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+def test_qc_skipped_when_no_subjects(mock_registry, mock_publish):
+    df_basics = pd.DataFrame({"subject_id": [None, None]})
+    mock_basics = MagicMock(return_value=df_basics)
+    mock_qc = MagicMock()
+    mock_registry.__getitem__.side_effect = _make_registry(
+        MagicMock(), MagicMock(), MagicMock(), mock_basics, MagicMock(), MagicMock(), mock_qc, MagicMock()
+    ).__getitem__
+
+    hide_acorns()
+
+    mock_qc.assert_not_called()
+
+
+@patch("zombie_squirrel.sync.publish_squirrel_metadata")
+@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+def test_publish_metadata_called_at_end(mock_registry, mock_publish):
+    df_basics = pd.DataFrame({"subject_id": ["sub1"]})
+    mock_basics = MagicMock(return_value=df_basics)
+    mock_registry.__getitem__.side_effect = _make_registry(
+        MagicMock(), MagicMock(), MagicMock(), mock_basics, MagicMock(), MagicMock(), MagicMock(), MagicMock()
+    ).__getitem__
+
+    hide_acorns()
+
+    mock_publish.assert_called_once()
+
+
+@patch("zombie_squirrel.sync.publish_squirrel_metadata")
+@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+def test_exception_from_acorn_propagates(mock_registry, mock_publish):
+    mock_upn = MagicMock(side_effect=Exception("Update failed"))
+    mock_registry.__getitem__.side_effect = _make_registry(
+        mock_upn, MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock()
+    ).__getitem__
+
+    with pytest.raises(Exception, match="Update failed"):
         hide_acorns()
 
-        mock_upn.assert_called_once_with(force_update=True)
-        mock_usi.assert_called_once_with(force_update=True)
-        mock_basics.assert_called_once_with(force_update=True)
-        mock_d2r.assert_called_once_with(force_update=True)
-        mock_r2d.assert_not_called()
-        mock_smartspim.assert_called_once_with(force_update=True)
 
-    @patch("zombie_squirrel.sync.publish_squirrel_metadata")
-    @patch("zombie_squirrel.sync.ACORN_REGISTRY")
-    def test_qc_called_per_subject(self, mock_registry, mock_publish):
-        """Test QC acorn called once per subject."""
-        df_basics = pd.DataFrame({"subject_id": ["sub1", "sub2", None]})
-        mock_basics = MagicMock(return_value=df_basics)
-        mock_qc = MagicMock()
-        mock_registry.__getitem__.side_effect = self._make_registry(
-            MagicMock(), MagicMock(), mock_basics, MagicMock(), MagicMock(), mock_qc, MagicMock()
-        ).__getitem__
+# --- publish_squirrel_metadata ---
 
+@patch("zombie_squirrel.sync.TREE")
+def test_plant_called_with_squirrel_json_key(mock_tree):
+    mock_tree.get_location.return_value = "s3://bucket/path"
+    publish_squirrel_metadata()
+    mock_tree.plant.assert_called_once()
+    assert mock_tree.plant.call_args[0][0] == "squirrel.json"
+
+
+@patch("zombie_squirrel.sync.TREE")
+def test_published_json_contains_nine_acorns(mock_tree):
+    mock_tree.get_location.return_value = "s3://bucket/path"
+    publish_squirrel_metadata()
+    payload = json.loads(mock_tree.plant.call_args[0][1])
+    assert "acorns" in payload
+    assert len(payload["acorns"]) == 9
+
+
+@patch("zombie_squirrel.sync.TREE")
+def test_published_json_acorn_names(mock_tree):
+    mock_tree.get_location.return_value = "s3://bucket/path"
+    publish_squirrel_metadata()
+    payload = json.loads(mock_tree.plant.call_args[0][1])
+    names = {a["name"] for a in payload["acorns"]}
+    for expected in ("unique_project_names", "unique_subject_ids", "unique_genotypes",
+                     "asset_basics", "source_data", "quality_control", "assets_smartspim",
+                     "metadata_upgrade", "platform_fib"):
+        assert expected in names
+
+
+@patch("zombie_squirrel.sync.TREE")
+def test_qc_acorn_is_partitioned(mock_tree):
+    mock_tree.get_location.return_value = "s3://bucket/path"
+    publish_squirrel_metadata()
+    payload = json.loads(mock_tree.plant.call_args[0][1])
+    qc = next(a for a in payload["acorns"] if a["name"] == "quality_control")
+    assert qc["partitioned"] is True
+    assert qc["partition_key"] == "subject_id"
+    assert qc["type"] == "asset"
+
+
+@patch("zombie_squirrel.sync.TREE")
+def test_non_qc_acorns_are_metadata_type(mock_tree):
+    mock_tree.get_location.return_value = "s3://bucket/path"
+    publish_squirrel_metadata()
+    payload = json.loads(mock_tree.plant.call_args[0][1])
+    for acorn in payload["acorns"]:
+        if acorn["name"] != "quality_control":
+            assert acorn["type"] == "metadata"
+            assert acorn["partitioned"] is False
+
+
+@patch("zombie_squirrel.sync.TREE")
+def test_get_location_called_for_each_acorn(mock_tree):
+    mock_tree.get_location.return_value = "s3://bucket/path"
+    publish_squirrel_metadata()
+    assert mock_tree.get_location.call_count == 9
+
+
+@patch("zombie_squirrel.sync.TREE")
+def test_qc_location_uses_partitioned_flag(mock_tree):
+    mock_tree.get_location.return_value = "s3://bucket/path"
+    publish_squirrel_metadata()
+    assert call("qc", partitioned=True) in mock_tree.get_location.call_args_list
+
+
+@patch("zombie_squirrel.sync.TREE")
+def test_acorns_have_columns(mock_tree):
+    mock_tree.get_location.return_value = "s3://bucket/path"
+    publish_squirrel_metadata()
+    payload = json.loads(mock_tree.plant.call_args[0][1])
+    for acorn in payload["acorns"]:
+        assert isinstance(acorn["columns"], list)
+        assert len(acorn["columns"]) > 0
+
+
+@patch("zombie_squirrel.sync.TREE")
+@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+def test_hide_acorns_calls_all_acorns(mock_registry, mock_tree):
+    mock_upn, mock_usi, mock_ugt, mock_d2r, mock_r2d, mock_qc, mock_smartspim, mock_fib = (MagicMock() for _ in range(8))
+    mock_basics = MagicMock(return_value=pd.DataFrame({"subject_id": ["subject1", "subject2"]}))
+    mock_registry.__getitem__.side_effect = lambda x: {
+        "unique_project_names": mock_upn,
+        "unique_subject_ids": mock_usi,
+        "unique_genotypes": mock_ugt,
+        "asset_basics": mock_basics,
+        "source_data": mock_d2r,
+        "raw_to_derived": mock_r2d,
+        "quality_control": mock_qc,
+        "assets_smartspim": mock_smartspim,
+        "metadata_upgrade": MagicMock(),
+        "platform_fib": mock_fib,
+    }[x]
+    mock_tree.get_location.return_value = "s3://test-bucket/test"
+
+    hide_acorns()
+
+    mock_upn.assert_called_once_with(force_update=True)
+    mock_usi.assert_called_once_with(force_update=True)
+    mock_ugt.assert_called_once_with(force_update=True)
+    mock_basics.assert_called_once_with(force_update=True)
+    mock_d2r.assert_called_once_with(force_update=True)
+    assert mock_qc.call_count == 2
+    mock_qc.assert_any_call(subject_id="subject1", force_update=True)
+    mock_qc.assert_any_call(subject_id="subject2", force_update=True)
+    mock_fib.assert_called_once_with(force_update=True)
+
+
+@patch("zombie_squirrel.sync.TREE")
+@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+def test_hide_acorns_empty_registry(mock_registry, mock_tree):
+    mock_upn, mock_usi, mock_ugt, mock_d2r, mock_r2d, mock_qc = (MagicMock() for _ in range(6))
+    mock_basics = MagicMock(return_value=pd.DataFrame({"subject_id": []}))
+    mock_registry.__getitem__.side_effect = lambda x: {
+        "unique_project_names": mock_upn,
+        "unique_subject_ids": mock_usi,
+        "unique_genotypes": mock_ugt,
+        "asset_basics": mock_basics,
+        "source_data": mock_d2r,
+        "raw_to_derived": mock_r2d,
+        "quality_control": mock_qc,
+        "assets_smartspim": MagicMock(),
+        "metadata_upgrade": MagicMock(),
+        "platform_fib": MagicMock(),
+    }[x]
+    mock_tree.get_location.return_value = "s3://test-bucket/test"
+
+    hide_acorns()
+
+    mock_upn.assert_called_once_with(force_update=True)
+    mock_usi.assert_called_once_with(force_update=True)
+    mock_ugt.assert_called_once_with(force_update=True)
+    mock_basics.assert_called_once_with(force_update=True)
+    mock_d2r.assert_called_once_with(force_update=True)
+    mock_qc.assert_not_called()
+
+
+@patch("zombie_squirrel.sync.TREE")
+@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+def test_hide_acorns_single_acorn(mock_registry, mock_tree):
+    mock_basics = MagicMock(return_value=pd.DataFrame({"subject_id": ["subject1"]}))
+    mock_qc = MagicMock()
+    mock_registry.__getitem__.side_effect = lambda x: {
+        "unique_project_names": MagicMock(),
+        "unique_subject_ids": MagicMock(),
+        "unique_genotypes": MagicMock(),
+        "asset_basics": mock_basics,
+        "source_data": MagicMock(),
+        "raw_to_derived": MagicMock(),
+        "quality_control": mock_qc,
+        "assets_smartspim": MagicMock(),
+        "metadata_upgrade": MagicMock(),
+        "platform_fib": MagicMock(),
+    }[x]
+    mock_tree.get_location.return_value = "s3://test-bucket/test"
+
+    hide_acorns()
+
+    mock_qc.assert_called_once_with(subject_id="subject1", force_update=True)
+
+
+@patch("zombie_squirrel.sync.TREE")
+@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+def test_hide_acorns_acorn_order_independent(mock_registry, mock_tree):
+    mock_basics = MagicMock(return_value=pd.DataFrame({"subject_id": ["sub1", "sub2", "sub3", "sub4", "sub5"]}))
+    mock_qc = MagicMock()
+    mock_registry.__getitem__.side_effect = lambda x: {
+        "unique_project_names": MagicMock(),
+        "unique_subject_ids": MagicMock(),
+        "unique_genotypes": MagicMock(),
+        "asset_basics": mock_basics,
+        "source_data": MagicMock(),
+        "raw_to_derived": MagicMock(),
+        "quality_control": mock_qc,
+        "assets_smartspim": MagicMock(),
+        "metadata_upgrade": MagicMock(),
+        "platform_fib": MagicMock(),
+    }[x]
+    mock_tree.get_location.return_value = "s3://test-bucket/test"
+
+    hide_acorns()
+
+    assert mock_qc.call_count == 5
+    for sub_id in ["sub1", "sub2", "sub3", "sub4", "sub5"]:
+        mock_qc.assert_any_call(subject_id=sub_id, force_update=True)
+
+
+@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+def test_hide_acorns_propagates_exceptions(mock_registry):
+    mock_upn = MagicMock(side_effect=Exception("Update failed"))
+    mock_registry.__getitem__.side_effect = lambda x: {
+        "unique_project_names": mock_upn,
+        "unique_subject_ids": MagicMock(),
+        "unique_genotypes": MagicMock(),
+        "asset_basics": MagicMock(),
+        "source_data": MagicMock(),
+        "raw_to_derived": MagicMock(),
+        "quality_control": MagicMock(),
+        "assets_smartspim": MagicMock(),
+        "metadata_upgrade": MagicMock(),
+        "platform_fib": MagicMock(),
+    }[x]
+
+    with pytest.raises(Exception, match="Update failed"):
         hide_acorns()
 
-        mock_qc.assert_has_calls(
-            [
-                call(subject_id="sub1", force_update=True),
-                call(subject_id="sub2", force_update=True),
-            ],
-            any_order=True,
-        )
-        self.assertEqual(mock_qc.call_count, 2)
-
-    @patch("zombie_squirrel.sync.publish_squirrel_metadata")
-    @patch("zombie_squirrel.sync.ACORN_REGISTRY")
-    def test_qc_skipped_when_no_subjects(self, mock_registry, mock_publish):
-        """Test QC not called when no subjects present."""
-        df_basics = pd.DataFrame({"subject_id": [None, None]})
-        mock_basics = MagicMock(return_value=df_basics)
-        mock_qc = MagicMock()
-        mock_registry.__getitem__.side_effect = self._make_registry(
-            MagicMock(), MagicMock(), mock_basics, MagicMock(), MagicMock(), mock_qc, MagicMock()
-        ).__getitem__
-
-        hide_acorns()
-
-        mock_qc.assert_not_called()
-
-    @patch("zombie_squirrel.sync.publish_squirrel_metadata")
-    @patch("zombie_squirrel.sync.ACORN_REGISTRY")
-    def test_publish_metadata_called_at_end(self, mock_registry, mock_publish):
-        """Test publish_squirrel_metadata called after acorns processed."""
-        df_basics = pd.DataFrame({"subject_id": ["sub1"]})
-        mock_basics = MagicMock(return_value=df_basics)
-        mock_registry.__getitem__.side_effect = self._make_registry(
-            MagicMock(), MagicMock(), mock_basics, MagicMock(), MagicMock(), MagicMock(), MagicMock()
-        ).__getitem__
-
-        hide_acorns()
-
-        mock_publish.assert_called_once()
-
-    @patch("zombie_squirrel.sync.publish_squirrel_metadata")
-    @patch("zombie_squirrel.sync.ACORN_REGISTRY")
-    def test_exception_from_acorn_propagates(self, mock_registry, mock_publish):
-        """Test exceptions from acorns propagate to caller."""
-        mock_upn = MagicMock(side_effect=Exception("Update failed"))
-        mock_registry.__getitem__.side_effect = self._make_registry(
-            mock_upn, MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock()
-        ).__getitem__
-
-        with self.assertRaises(Exception) as ctx:
-            hide_acorns()
-
-        self.assertEqual(str(ctx.exception), "Update failed")
-
-
-class TestPublishSquirrelMetadata(unittest.TestCase):
-    """Test publish_squirrel_metadata function."""
-
-    @patch("zombie_squirrel.sync.TREE")
-    def test_plant_called_with_squirrel_json_key(self, mock_tree):
-        """Test tree.plant called with squirrel.json key."""
-        mock_tree.get_location.return_value = "s3://bucket/path"
-
-        publish_squirrel_metadata()
-
-        mock_tree.plant.assert_called_once()
-        key = mock_tree.plant.call_args[0][0]
-        self.assertEqual(key, "squirrel.json")
-
-    @patch("zombie_squirrel.sync.TREE")
-    def test_published_json_contains_nine_acorns(self, mock_tree):
-        """Test published JSON contains nine acorns."""
-        mock_tree.get_location.return_value = "s3://bucket/path"
-
-        publish_squirrel_metadata()
-
-        payload = json.loads(mock_tree.plant.call_args[0][1])
-        self.assertIn("acorns", payload)
-        self.assertEqual(len(payload["acorns"]), 8)
-
-    @patch("zombie_squirrel.sync.TREE")
-    def test_published_json_acorn_names(self, mock_tree):
-        """Test published JSON contains all acorn names."""
-        mock_tree.get_location.return_value = "s3://bucket/path"
-
-        publish_squirrel_metadata()
-
-        payload = json.loads(mock_tree.plant.call_args[0][1])
-        names = {a["name"] for a in payload["acorns"]}
-        self.assertIn("unique_project_names", names)
-        self.assertIn("unique_subject_ids", names)
-        self.assertIn("asset_basics", names)
-        self.assertIn("source_data", names)
-        self.assertIn("quality_control", names)
-        self.assertIn("assets_smartspim", names)
-        self.assertIn("metadata_upgrade", names)
-        self.assertIn("platform_fib", names)
-
-    @patch("zombie_squirrel.sync.TREE")
-    def test_qc_acorn_is_partitioned(self, mock_tree):
-        """Test quality control acorn is marked as partitioned."""
-        mock_tree.get_location.return_value = "s3://bucket/path"
-
-        publish_squirrel_metadata()
-
-        payload = json.loads(mock_tree.plant.call_args[0][1])
-        qc = next(a for a in payload["acorns"] if a["name"] == "quality_control")
-        self.assertTrue(qc["partitioned"])
-        self.assertEqual(qc["partition_key"], "subject_id")
-        self.assertEqual(qc["type"], "asset")
-
-    @patch("zombie_squirrel.sync.TREE")
-    def test_non_qc_acorns_are_metadata_type(self, mock_tree):
-        """Test non-QC acorns are metadata type."""
-        mock_tree.get_location.return_value = "s3://bucket/path"
-
-        publish_squirrel_metadata()
-
-        payload = json.loads(mock_tree.plant.call_args[0][1])
-        for acorn in payload["acorns"]:
-            if acorn["name"] != "quality_control":
-                self.assertEqual(acorn["type"], "metadata")
-                self.assertFalse(acorn["partitioned"])
-
-    @patch("zombie_squirrel.sync.TREE")
-    def test_get_location_called_for_each_acorn(self, mock_tree):
-        """Test get_location called for each acorn."""
-        mock_tree.get_location.return_value = "s3://bucket/path"
-
-        publish_squirrel_metadata()
-
-        self.assertEqual(mock_tree.get_location.call_count, 8)
-
-    @patch("zombie_squirrel.sync.TREE")
-    def test_qc_location_uses_partitioned_flag(self, mock_tree):
-        """Test QC location retrieved with partitioned flag."""
-        mock_tree.get_location.return_value = "s3://bucket/path"
-
-        publish_squirrel_metadata()
-
-        partitioned_call = call("qc", partitioned=True)
-        self.assertIn(partitioned_call, mock_tree.get_location.call_args_list)
-
-    @patch("zombie_squirrel.sync.TREE")
-    def test_acorns_have_columns(self, mock_tree):
-        """Test all acorns have columns in output."""
-        mock_tree.get_location.return_value = "s3://bucket/path"
-
-        publish_squirrel_metadata()
-
-        payload = json.loads(mock_tree.plant.call_args[0][1])
-        for acorn in payload["acorns"]:
-            self.assertIsInstance(acorn["columns"], list)
-            self.assertGreater(len(acorn["columns"]), 0)
-
-    @patch("zombie_squirrel.sync.TREE")
-    @patch("zombie_squirrel.sync.ACORN_REGISTRY")
-    def test_hide_acorns_calls_all_acorns(self, mock_registry, mock_tree):
-        """Test that hide_acorns calls all registered acorns with force_update."""
-        mock_upn = MagicMock()
-        mock_usi = MagicMock()
-        mock_basics = MagicMock()
-        mock_d2r = MagicMock()
-        mock_r2d = MagicMock()
-        mock_qc = MagicMock()
-
-        # Create mock dataframe with subject IDs for QC
-        mock_df = pd.DataFrame({"subject_id": ["subject1", "subject2"]})
-        mock_basics.return_value = mock_df
-
-        mock_smartspim = MagicMock()
-        mock_fib = MagicMock()
-        mock_registry.__getitem__.side_effect = lambda x: {
-            "unique_project_names": mock_upn,
-            "unique_subject_ids": mock_usi,
-            "asset_basics": mock_basics,
-            "source_data": mock_d2r,
-            "raw_to_derived": mock_r2d,
-            "quality_control": mock_qc,
-            "assets_smartspim": mock_smartspim,
-            "metadata_upgrade": MagicMock(),
-            "platform_fib": mock_fib,
-        }[x]
-
-        mock_tree.get_location.return_value = "s3://test-bucket/test"
-
-        hide_acorns()
-
-        mock_upn.assert_called_once_with(force_update=True)
-        mock_usi.assert_called_once_with(force_update=True)
-        mock_basics.assert_called_once_with(force_update=True)
-        mock_d2r.assert_called_once_with(force_update=True)
-        assert mock_qc.call_count == 2
-        mock_qc.assert_any_call(subject_id="subject1", force_update=True)
-        mock_qc.assert_any_call(subject_id="subject2", force_update=True)
-        mock_fib.assert_called_once_with(force_update=True)
-
-    @patch("zombie_squirrel.sync.TREE")
-    @patch("zombie_squirrel.sync.ACORN_REGISTRY")
-    def test_hide_acorns_empty_registry(self, mock_registry, mock_tree):
-        """Test hide_acorns with no subject IDs in asset_basics."""
-        mock_upn = MagicMock()
-        mock_usi = MagicMock()
-        mock_basics = MagicMock()
-        mock_d2r = MagicMock()
-        mock_r2d = MagicMock()
-        mock_qc = MagicMock()
-
-        # Create mock dataframe with no subject IDs
-        mock_df = pd.DataFrame({"subject_id": []})
-        mock_basics.return_value = mock_df
-
-        mock_registry.__getitem__.side_effect = lambda x: {
-            "unique_project_names": mock_upn,
-            "unique_subject_ids": mock_usi,
-            "asset_basics": mock_basics,
-            "source_data": mock_d2r,
-            "raw_to_derived": mock_r2d,
-            "quality_control": mock_qc,
-            "assets_smartspim": MagicMock(),
-            "metadata_upgrade": MagicMock(),
-            "platform_fib": MagicMock(),
-        }[x]
-
-        mock_tree.get_location.return_value = "s3://test-bucket/test"
-
-        hide_acorns()
-
-        mock_upn.assert_called_once_with(force_update=True)
-        mock_usi.assert_called_once_with(force_update=True)
-        mock_basics.assert_called_once_with(force_update=True)
-        mock_d2r.assert_called_once_with(force_update=True)
-        mock_qc.assert_not_called()
-
-    @patch("zombie_squirrel.sync.TREE")
-    @patch("zombie_squirrel.sync.ACORN_REGISTRY")
-    def test_hide_acorns_single_acorn(self, mock_registry, mock_tree):
-        """Test hide_acorns with a single subject ID."""
-        mock_upn = MagicMock()
-        mock_usi = MagicMock()
-        mock_basics = MagicMock()
-        mock_d2r = MagicMock()
-        mock_r2d = MagicMock()
-        mock_qc = MagicMock()
-
-        # Create mock dataframe with single subject ID
-        mock_df = pd.DataFrame({"subject_id": ["subject1"]})
-        mock_basics.return_value = mock_df
-
-        mock_registry.__getitem__.side_effect = lambda x: {
-            "unique_project_names": mock_upn,
-            "unique_subject_ids": mock_usi,
-            "asset_basics": mock_basics,
-            "source_data": mock_d2r,
-            "raw_to_derived": mock_r2d,
-            "quality_control": mock_qc,
-            "assets_smartspim": MagicMock(),
-            "metadata_upgrade": MagicMock(),
-            "platform_fib": MagicMock(),
-        }[x]
-
-        mock_tree.get_location.return_value = "s3://test-bucket/test"
-
-        hide_acorns()
-
-        mock_qc.assert_called_once_with(subject_id="subject1", force_update=True)
-
-    @patch("zombie_squirrel.sync.TREE")
-    @patch("zombie_squirrel.sync.ACORN_REGISTRY")
-    def test_hide_acorns_acorn_order_independent(self, mock_registry, mock_tree):
-        """Test that hide_acorns processes all subject IDs."""
-        mock_upn = MagicMock()
-        mock_usi = MagicMock()
-        mock_basics = MagicMock()
-        mock_d2r = MagicMock()
-        mock_r2d = MagicMock()
-        mock_qc = MagicMock()
-
-        # Create mock dataframe with multiple subject IDs
-        mock_df = pd.DataFrame({"subject_id": ["sub1", "sub2", "sub3", "sub4", "sub5"]})
-        mock_basics.return_value = mock_df
-
-        mock_registry.__getitem__.side_effect = lambda x: {
-            "unique_project_names": mock_upn,
-            "unique_subject_ids": mock_usi,
-            "asset_basics": mock_basics,
-            "source_data": mock_d2r,
-            "raw_to_derived": mock_r2d,
-            "quality_control": mock_qc,
-            "assets_smartspim": MagicMock(),
-            "metadata_upgrade": MagicMock(),
-            "platform_fib": MagicMock(),
-        }[x]
-
-        mock_tree.get_location.return_value = "s3://test-bucket/test"
-
-        hide_acorns()
-
-        assert mock_qc.call_count == 5
-        for sub_id in ["sub1", "sub2", "sub3", "sub4", "sub5"]:
-            mock_qc.assert_any_call(subject_id=sub_id, force_update=True)
-
-    @patch("zombie_squirrel.sync.ACORN_REGISTRY")
-    def test_hide_acorns_propagates_exceptions(self, mock_registry):
-        """Test that exceptions from acorns are propagated."""
-        mock_upn = MagicMock(side_effect=Exception("Update failed"))
-        mock_usi = MagicMock()
-        mock_basics = MagicMock()
-        mock_d2r = MagicMock()
-        mock_r2d = MagicMock()
-        mock_qc = MagicMock()
-
-        mock_registry.__getitem__.side_effect = lambda x: {
-            "unique_project_names": mock_upn,
-            "unique_subject_ids": mock_usi,
-            "asset_basics": mock_basics,
-            "source_data": mock_d2r,
-            "raw_to_derived": mock_r2d,
-            "quality_control": mock_qc,
-            "assets_smartspim": MagicMock(),
-            "metadata_upgrade": MagicMock(),
-            "platform_fib": MagicMock(),
-        }[x]
-
-        with self.assertRaises(Exception) as context:
-            hide_acorns()
-
-        self.assertEqual(str(context.exception), "Update failed")
-        mock_upn.assert_called_once_with(force_update=True)
-
-
-if __name__ == "__main__":
-    unittest.main()
+    mock_upn.assert_called_once_with(force_update=True)
