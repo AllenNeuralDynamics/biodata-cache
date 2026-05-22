@@ -1,5 +1,6 @@
 """SmartSPIM assets acorn."""
 
+import json
 import logging
 
 import boto3
@@ -40,18 +41,29 @@ def _list_channels(location: str) -> list[str]:
     return [cp["Prefix"].rstrip("/").split("/")[-1] for cp in result.get("CommonPrefixes", [])]
 
 
+def _fetch_raw_ng_link(raw_name: str) -> str | None:
+    """Fetch the ng_link from a raw asset's SPIM/derivatives/neuroglancer_config.json."""
+    s3_client = boto3.client("s3")
+    key = f"{raw_name}/SPIM/derivatives/neuroglancer_config.json"
+    try:
+        obj = s3_client.get_object(Bucket=AIND_OPEN_DATA_BUCKET, Key=key)
+        config = json.loads(obj["Body"].read())
+        link = config.get("ng_link")
+        if link and "/derivatives/" in link and "/SPIM/derivatives/" not in link:
+            link = link.replace("/derivatives/", "/SPIM/derivatives/")
+        return link
+    except Exception:
+        return None
+
+
 def _fetch_asset_metadata(asset_names: list[str]) -> dict[str, dict]:
-    """Fetch metadata for assets (raw or stitched) from the document DB in batches of 100."""
+    """Fetch location and processing metadata for stitched assets from the document DB."""
     client = MetadataDbClient(
         host=acorns.API_GATEWAY_HOST,
         version="v2",
     )
     fields = [
         "name",
-        "subject.subject_id",
-        "subject.subject_details.genotype",
-        "data_description.institution",
-        "acquisition.acquisition_start_time",
         "processing.data_processes",
         "location",
     ]
@@ -69,77 +81,85 @@ def _fetch_asset_metadata(asset_names: list[str]) -> dict[str, dict]:
     return {record["name"]: record for record in all_records}
 
 
-MAX_CHANNELS = 3
+def _build_rows(
+    raw_to_stitched: dict[str, str | None],
+    metadata: dict[str, dict],
+    raw_ng_links: dict[str, str | None],
+) -> list[dict]:
+    """Build one row per (raw asset, channel) in long form.
 
-
-def _build_rows(raw_to_stitched: dict[str, str | None], metadata: dict[str, dict]) -> list[dict]:
-    """Build one row per raw asset with up to 3 channel columns.
-
-    For raw assets with a stitched derived asset, metadata and neuroglancer links
-    are pulled from the stitched record. For raw assets without one, metadata is
-    pulled from the raw record and all link/channel columns are None.
+    Processed assets with N channels produce N rows. Processed assets with no
+    channels yet, and unprocessed assets, produce a single row with channel=None.
     """
     rows = []
     for raw_name, stitched_name in raw_to_stitched.items():
         processed = stitched_name is not None
-        lookup_name = stitched_name if processed else raw_name
-        record = metadata.get(lookup_name, {})
-
-        subject = record.get("subject", {})
-        subject_id = subject.get("subject_id", None)
-        genotype = subject.get("subject_details", {}).get("genotype", None)
-
-        institution = record.get("data_description", {}).get("institution", {})
-        institution_abbrev = institution.get("abbreviation", None) if institution else None
-
-        acquisition_start_time = record.get("acquisition", {}).get("acquisition_start_time", None)
+        raw_link = raw_ng_links.get(raw_name)
 
         if processed:
+            record = metadata.get(stitched_name, {})
             location = record.get("location", "")
             data_processes = record.get("processing", {}).get("data_processes", []) or []
             processing_end_time = data_processes[-1].get("end_date_time", None) if data_processes else None
             stitch_link = _stitched_link(location) if location else None
             channels = _list_channels(location) if location else []
-        else:
-            processing_end_time = None
-            stitch_link = None
-            channels = []
 
-        row = {
-            "subject_id": subject_id,
-            "genotype": genotype,
-            "institution": institution_abbrev,
-            "acquisition_start_time": acquisition_start_time,
-            "processing_end_time": processing_end_time,
-            "stitched_link": stitch_link,
-            "processed": processed,
-            "name": stitched_name if processed else raw_name,
-        }
-        for i in range(1, MAX_CHANNELS + 1):
-            channel = channels[i - 1] if i <= len(channels) else None
-            row[f"channel_{i}"] = channel
-            row[f"segmentation_link_{i}"] = _segmentation_link(location, channel) if (processed and channel) else None
-            row[f"quantification_link_{i}"] = _quantification_link(location, channel) if (processed and channel) else None
-        rows.append(row)
+            if channels:
+                for channel in channels:
+                    rows.append({
+                        "name": stitched_name,
+                        "raw_name": raw_name,
+                        "processed": True,
+                        "processing_end_time": processing_end_time,
+                        "stitched_link": stitch_link,
+                        "raw_link": raw_link,
+                        "channel": channel,
+                        "segmentation_link": _segmentation_link(location, channel),
+                        "quantification_link": _quantification_link(location, channel),
+                    })
+            else:
+                rows.append({
+                    "name": stitched_name,
+                    "raw_name": raw_name,
+                    "processed": True,
+                    "processing_end_time": processing_end_time,
+                    "stitched_link": stitch_link,
+                    "raw_link": raw_link,
+                    "channel": None,
+                    "segmentation_link": None,
+                    "quantification_link": None,
+                })
+        else:
+            rows.append({
+                "name": raw_name,
+                "raw_name": raw_name,
+                "processed": False,
+                "processing_end_time": None,
+                "stitched_link": None,
+                "raw_link": raw_link,
+                "channel": None,
+                "segmentation_link": None,
+                "quantification_link": None,
+            })
     return rows
 
 
 @acorns.register_acorn(acorns.NAMES["smartspim"])
 def assets_smartspim(force_update: bool = False) -> pd.DataFrame:
-    """Build a DataFrame of SmartSPIM stitched assets for dashboard use.
+    """Build a long-form DataFrame of SmartSPIM assets with one row per (asset, channel).
 
     Fetches raw SPIM assets from asset_basics, finds the latest stitched derived
-    asset for each via raw_to_derived, then enriches with metadata and S3 channel
-    links from image_cell_segmentation/. Results are cached.
+    asset for each via source_data, then enriches with S3 channel links from
+    image_cell_segmentation/ and the raw neuroglancer link from the raw asset's
+    SPIM/derivatives/neuroglancer_config.json. Results are cached.
 
     Args:
         force_update: If True, bypass cache and rebuild from database and S3.
 
     Returns:
-        DataFrame with one row per (stitched_asset, channel) and columns:
-        subject_id, genotype, institution, acquisition_start_time,
-        processing_end_time, stitched_link, channel, segmentation_link,
-        quantification_link, name.
+        DataFrame with one row per (asset, channel) and columns:
+        name, raw_name, processed, processing_end_time, stitched_link, raw_link,
+        channel, segmentation_link, quantification_link.
     """
     df = acorns.TREE.scurry(acorns.NAMES["smartspim"])
 
@@ -175,19 +195,32 @@ def assets_smartspim(force_update: bool = False) -> pd.DataFrame:
         raw_to_stitched = {name: raw_to_stitched_series.get(name) for name in raw_spim_names}
 
         stitched_names = [v for v in raw_to_stitched.values() if v is not None]
-        raw_without_stitched = [k for k, v in raw_to_stitched.items() if v is None]
-        all_to_fetch = stitched_names + raw_without_stitched
 
         logging.info(
             SquirrelMessage(
                 tree=acorns.TREE.__class__.__name__,
                 acorn=acorns.NAMES["smartspim"],
-                message=f"Fetching metadata for {len(stitched_names)} stitched and {len(raw_without_stitched)} unprocessed assets",
+                message=f"Fetching metadata for {len(stitched_names)} stitched and {len(raw_spim_names) - len(stitched_names)} unprocessed assets",
             ).to_json()
         )
 
-        metadata = _fetch_asset_metadata(all_to_fetch)
-        rows = _build_rows(raw_to_stitched, metadata)
+        metadata = _fetch_asset_metadata(stitched_names)
+        logging.info(
+            SquirrelMessage(
+                tree=acorns.TREE.__class__.__name__,
+                acorn=acorns.NAMES["smartspim"],
+                message=f"Fetched metadata for {len(metadata)} assets, fetching raw neuroglancer links from S3",
+            ).to_json()
+        )
+        raw_ng_links = {name: _fetch_raw_ng_link(name) for name in raw_spim_names}
+        logging.info(
+            SquirrelMessage(
+                tree=acorns.TREE.__class__.__name__,
+                acorn=acorns.NAMES["smartspim"],
+                message=f"Fetched {sum(v is not None for v in raw_ng_links.values())} raw neuroglancer links, building rows",
+            ).to_json()
+        )
+        rows = _build_rows(raw_to_stitched, metadata, raw_ng_links)
         df = pd.DataFrame(rows)
 
         acorns.TREE.hide(acorns.NAMES["smartspim"], df)
@@ -197,21 +230,13 @@ def assets_smartspim(force_update: bool = False) -> pd.DataFrame:
 
 def assets_smartspim_columns() -> list[Column]:
     return [
-        Column(name="subject_id", description="Subject for the asset"),
-        Column(name="genotype", description="Subject genotype"),
-        Column(name="institution", description="Institution abbreviation"),
-        Column(name="acquisition_start_time", description="Acquisition start time"),
+        Column(name="name", description="Asset name (stitched if available, otherwise raw)"),
+        Column(name="raw_name", description="Raw asset name"),
+        Column(name="processed", description="Whether a stitched derived asset exists"),
         Column(name="processing_end_time", description="Processing end time for stitched asset"),
         Column(name="stitched_link", description="Neuroglancer link to stitched asset"),
-        Column(name="processed", description="Whether a stitched derived asset exists"),
-        Column(name="name", description="Asset name (stitched if available, otherwise raw)"),
-        Column(name="channel_1", description="First channel name"),
-        Column(name="segmentation_link_1", description="Neuroglancer segmentation link for channel 1"),
-        Column(name="quantification_link_1", description="Neuroglancer quantification link for channel 1"),
-        Column(name="channel_2", description="Second channel name"),
-        Column(name="segmentation_link_2", description="Neuroglancer segmentation link for channel 2"),
-        Column(name="quantification_link_2", description="Neuroglancer quantification link for channel 2"),
-        Column(name="channel_3", description="Third channel name"),
-        Column(name="segmentation_link_3", description="Neuroglancer segmentation link for channel 3"),
-        Column(name="quantification_link_3", description="Neuroglancer quantification link for channel 3"),
+        Column(name="raw_link", description="Neuroglancer link from raw asset's SPIM/derivatives/neuroglancer_config.json"),
+        Column(name="channel", description="Channel name (e.g. Ex_561_Em_600), or None if unprocessed"),
+        Column(name="segmentation_link", description="Neuroglancer segmentation link for this channel"),
+        Column(name="quantification_link", description="Neuroglancer quantification link for this channel"),
     ]
