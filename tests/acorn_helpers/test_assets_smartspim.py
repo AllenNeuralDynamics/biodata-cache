@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from zombie_squirrel.acorn_helpers.assets_smartspim import (
+    _alignment_link,
     _build_rows,
     _fetch_asset_metadata,
     _fetch_raw_ng_link,
@@ -45,6 +46,11 @@ def test_segmentation_link():
 def test_quantification_link():
     assert _quantification_link(LOCATION, "Ex_561_Em_600") == (
         f"https://allen.neuroglass.io/new#!{LOCATION}/image_cell_quantification/Ex_561_Em_600/visualization/neuroglancer_config.json"
+    )
+
+def test_alignment_link():
+    assert _alignment_link(LOCATION) == (
+        f"https://allen.neuroglass.io/new#!{LOCATION}/image_atlas_alignment/neuroglancer_config.json"
     )
 
 
@@ -166,6 +172,7 @@ def test_build_rows_processed_row_fields_populated(mock_list_channels):
     assert row["channel"] == "Ex_561_Em_600"
     assert row["segmentation_link"] == _segmentation_link(LOCATION, "Ex_561_Em_600")
     assert row["quantification_link"] == _quantification_link(LOCATION, "Ex_561_Em_600")
+    assert row["alignment_link"] == _alignment_link(LOCATION)
     assert row["processed"] is True
 
 @patch("zombie_squirrel.acorn_helpers.assets_smartspim._list_channels")
@@ -176,6 +183,7 @@ def test_build_rows_processed_no_channels_emits_single_null_row(mock_list_channe
     assert rows[0]["channel"] is None
     assert rows[0]["segmentation_link"] is None
     assert rows[0]["quantification_link"] is None
+    assert rows[0]["alignment_link"] == _alignment_link(LOCATION)
     assert rows[0]["processed"] is True
     assert rows[0]["name"] == STITCHED_NAME
     assert rows[0]["raw_name"] == RAW_NAME
@@ -192,6 +200,7 @@ def test_build_rows_unprocessed_row_has_no_links(mock_list_channels):
     assert row["channel"] is None
     assert row["segmentation_link"] is None
     assert row["quantification_link"] is None
+    assert row["alignment_link"] is None
     assert row["processed"] is False
     mock_list_channels.assert_not_called()
 
@@ -304,5 +313,5 @@ def test_filters_only_raw_spim_assets(mock_tree, mock_asset_basics, mock_source_
 def test_returns_expected_columns():
     assert [col.name for col in assets_smartspim_columns()] == [
         "name", "raw_name", "processed", "institution", "processing_end_time",
-        "stitched_link", "raw_link", "channel", "segmentation_link", "quantification_link",
+        "stitched_link", "raw_link", "channel", "segmentation_link", "quantification_link", "alignment_link",
     ]

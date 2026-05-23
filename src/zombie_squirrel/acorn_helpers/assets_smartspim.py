@@ -29,6 +29,10 @@ def _quantification_link(location: str, channel: str) -> str:
     return f"{NEUROGLANCER_BASE}{location}/image_cell_quantification/{channel}/visualization/neuroglancer_config.json"
 
 
+def _alignment_link(location: str) -> str:
+    return f"{NEUROGLANCER_BASE}{location}/image_atlas_alignment/neuroglancer_config.json"
+
+
 def _list_channels(location: str) -> list[str]:
     """List channel subfolders under image_cell_segmentation/ for a given asset location."""
     s3_client = boto3.client("s3")
@@ -107,6 +111,7 @@ def _build_rows(
             stitch_link = _stitched_link(location) if location else None
             channels = _list_channels(location) if location else []
 
+            align_link = _alignment_link(location) if location else None
             if channels:
                 for channel in channels:
                     rows.append({
@@ -120,6 +125,7 @@ def _build_rows(
                         "channel": channel,
                         "segmentation_link": _segmentation_link(location, channel),
                         "quantification_link": _quantification_link(location, channel),
+                        "alignment_link": align_link,
                     })
             else:
                 rows.append({
@@ -133,6 +139,7 @@ def _build_rows(
                     "channel": None,
                     "segmentation_link": None,
                     "quantification_link": None,
+                    "alignment_link": align_link,
                 })
         else:
             rows.append({
@@ -146,6 +153,7 @@ def _build_rows(
                 "channel": None,
                 "segmentation_link": None,
                 "quantification_link": None,
+                "alignment_link": None,
             })
     return rows
 
@@ -246,4 +254,5 @@ def assets_smartspim_columns() -> list[Column]:
         Column(name="channel", description="Channel name (e.g. Ex_561_Em_600), or None if unprocessed"),
         Column(name="segmentation_link", description="Neuroglancer segmentation link for this channel"),
         Column(name="quantification_link", description="Neuroglancer quantification link for this channel"),
+        Column(name="alignment_link", description="Neuroglancer link to image_atlas_alignment/neuroglancer_config.json"),
     ]
