@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .acorn_helpers.asset_basics import asset_basics_columns
 from .acorn_helpers.assets_smartspim import assets_smartspim_columns
+from .acorn_helpers.foraging_sessions import foraging_sessions_columns
 from .acorn_helpers.platform_fib import platform_fib_columns
 from .acorn_helpers.metadata_upgrade import metadata_upgrade_columns
 from .acorn_helpers.qc import qc_columns
@@ -95,6 +96,14 @@ def publish_squirrel_metadata() -> None:
             type=AcornType.metadata,
             columns=platform_fib_columns(),
         ),
+        Acorn(
+            name=NAMES["foraging"],
+            description="Foraging behavior sessions with key performance metrics, one row per session",
+            location=TREE.get_location(NAMES["foraging"]),
+            partitioned=False,
+            type=AcornType.metadata,
+            columns=foraging_sessions_columns(),
+        ),
     ]
     squirrel = Squirrel(acorns=acorn_list)
     TREE.plant("squirrel.json", squirrel.model_dump_json())
@@ -134,5 +143,6 @@ def hide_acorns():
 
     ACORN_REGISTRY[NAMES["smartspim"]](force_update=True)
     ACORN_REGISTRY[NAMES["fib"]](force_update=True)
+    ACORN_REGISTRY[NAMES["foraging"]](force_update=True)
 
     publish_squirrel_metadata()
