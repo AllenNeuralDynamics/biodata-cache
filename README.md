@@ -53,6 +53,7 @@ project_names = unique_project_names()
 | `platform_fib` | Fiber photometry assets in long form, one row per asset/fiber/channel combination | `s3://allen-data-views/data-asset-cache/zs_platform_fib.pqt` | metadata | False | `asset_name`, `fiber`, `patch_cord`, `channel`, `intended_measurement`, `targeted_structure` |
 | `metadata_core` | Presence of core aind-data-schema metadata files per asset (True if file is not null) | `s3://allen-data-views/data-asset-cache/zs_metadata_core.pqt` | metadata | False | `_id`, `_last_modified`, `subject`, `data_description`, `procedures`, `instrument`, `acquisition`, `processing`, `quality_control` |
 | `foraging_sessions` | Foraging behavior sessions with key performance metrics, one row per session | `s3://allen-data-views/data-asset-cache/zs_foraging_sessions.pqt` | metadata | False | `subject_id`, `session_date`, `session`, `nwb_suffix`, `rig`, `trainer`, `task`, `curriculum_name`, `curriculum_version`, `current_stage_actual`, `foraging_eff`, `foraging_eff_random_seed`, `finished_trials`, `finished_rate`, `total_trials`, `bias_naive` |
+| `behavior_curriculum` | Behavior assets with curriculum name and stage, one row per behavior asset | `s3://allen-data-views/data-asset-cache/zs_behavior_curriculum.pqt` | asset | False | `asset_name`, `curriculum_name`, `stage_name`, `stage_node_id` |
 
 The `raw_to_derived` function is not a table stored in S3, instead it is used by passing an asset_name (or list of asset names) and a modality. The function returns the latest derived asset matching the requested pattern.
 

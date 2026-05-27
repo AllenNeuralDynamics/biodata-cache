@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from .acorn_helpers.asset_basics import asset_basics_columns
 from .acorn_helpers.assets_smartspim import assets_smartspim_columns
 from .acorn_helpers.foraging_sessions import foraging_sessions_columns
+from .acorn_helpers.behavior_curriculum import behavior_curriculum_columns
 from .acorn_helpers.platform_fib import platform_fib_columns
 from .acorn_helpers.metadata_upgrade import metadata_upgrade_columns
 from .acorn_helpers.qc import qc_columns
@@ -104,6 +105,14 @@ def publish_squirrel_metadata() -> None:
             type=AcornType.metadata,
             columns=foraging_sessions_columns(),
         ),
+        Acorn(
+            name=NAMES["curriculum"],
+            description="Behavior assets with curriculum name and stage from trainer_state.json",
+            location=TREE.get_location(NAMES["curriculum"]),
+            partitioned=False,
+            type=AcornType.asset,
+            columns=behavior_curriculum_columns(),
+        ),
     ]
     squirrel = Squirrel(acorns=acorn_list)
     TREE.plant("squirrel.json", squirrel.model_dump_json())
@@ -144,5 +153,6 @@ def hide_acorns():
     ACORN_REGISTRY[NAMES["smartspim"]](force_update=True)
     ACORN_REGISTRY[NAMES["fib"]](force_update=True)
     ACORN_REGISTRY[NAMES["foraging"]](force_update=True)
+    ACORN_REGISTRY[NAMES["curriculum"]](force_update=True)
 
     publish_squirrel_metadata()
