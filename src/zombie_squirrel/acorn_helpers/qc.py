@@ -211,7 +211,7 @@ def qc_columns() -> list[Column]:
         Column(name="stage", description="Stage: raw, processing, or analysis"),
         Column(name="modality", description="Modality abbreviation"),
         Column(name="value", description="Metric value, converted to string if not already a string"),
-        Column(name="status", description="Latest metric status (fail, pass, pending)"),
+        Column(name="status", description="Latest metric status (Pass, Fail, Pending)"),
         Column(name="asset_name", description="Asset name the metric is associated with"),
     ]
 
