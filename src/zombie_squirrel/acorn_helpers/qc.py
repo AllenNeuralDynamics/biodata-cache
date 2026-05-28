@@ -158,7 +158,7 @@ def _fetch_subject_qc(subject_id: str) -> pd.DataFrame:
 
                 if col == "modality" and isinstance(value, dict):
                     value = value.get("abbreviation", None)
-                elif col == "status_history" and isinstance(value, list) and len(value) > 0:
+                elif col == "status_history" and isinstance(value, list):
                     value = value[-1].get("status", None) if isinstance(value[-1], dict) else None
                 elif col == "value":
                     if isinstance(value, dict):
@@ -166,7 +166,10 @@ def _fetch_subject_qc(subject_id: str) -> pd.DataFrame:
                     elif value is not None and not isinstance(value, str):
                         value = str(value)
 
-                metric_data[col] = value
+                if col == "status_history":
+                    metric_data["status"] = value
+                else:
+                    metric_data[col] = value
             metric_data["asset_name"] = asset_name
             metric_data["subject_id"] = subject_id_value
             metric_data["timestamp"] = timestamp
@@ -184,11 +187,8 @@ def _fetch_subject_qc(subject_id: str) -> pd.DataFrame:
 
     df = pd.DataFrame.from_records(all_metrics)
 
-    # Drop the object_type and status_history columns, if they exist
     if "object_type" in df.columns:
         df = df.drop(columns=["object_type"])
-    if "status_history" in df.columns:
-        df = df.drop(columns=["status_history"])
 
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     acorns.TREE.hide(cache_key, df)

@@ -85,7 +85,7 @@ def test_qc_dict_value_replaced_and_no_tags_column(mock_client_class):
             "object_type": "QC metric", "name": "Complex Metric", "stage": "Processing",
             "modality": {"name": "Test", "abbreviation": "t"},
             "value": {"nested": {"deep": "value"}, "status": "Pass"},
-            "tags": {"key1": "val1", "key2": "val2"}, "status_history": [],
+            "tags": {"key1": "val1", "key2": "val2"}, "status_history": [{"status": "Pass", "timestamp": "2025-01-01T00:00:00"}],
         }]},
     }]
     df = qc("test-asset", force_update=True)
@@ -101,7 +101,7 @@ def test_qc_cache_persistence(mock_client_class):
         "_id": "test-asset-004", "name": "test-asset",
         "quality_control": {"metrics": [{
             "object_type": "QC metric", "name": "Persistent Metric", "stage": "Processing",
-            "modality": {"name": "Test", "abbreviation": "t"}, "value": "test_value", "tags": None, "status_history": [],
+            "modality": {"name": "Test", "abbreviation": "t"}, "value": "test_value", "tags": None, "status_history": [{"status": "Pass", "timestamp": "2025-01-01T00:00:00"}],
         }]},
     }]
     df1 = qc("test-asset", force_update=True)
@@ -120,11 +120,11 @@ def test_qc_multiple_assets_merge(mock_client_class):
     mock_client_instance.retrieve_docdb_records.return_value = [
         {"_id": "asset1", "name": "asset1", "quality_control": {"metrics": [{
             "object_type": "QC metric", "name": "Metric A", "stage": "Processing",
-            "modality": {"name": "Test", "abbreviation": "t"}, "value": "pass", "tags": None, "status_history": [],
+            "modality": {"name": "Test", "abbreviation": "t"}, "value": "pass", "tags": None, "status_history": [{"status": "Pass", "timestamp": "2025-01-01T00:00:00"}],
         }]}},
         {"_id": "asset2", "name": "asset2", "quality_control": {"metrics": [{
             "object_type": "QC metric", "name": "Metric B", "stage": "Processing",
-            "modality": {"name": "Test", "abbreviation": "t"}, "value": "fail", "tags": None, "status_history": [],
+            "modality": {"name": "Test", "abbreviation": "t"}, "value": "fail", "tags": None, "status_history": [{"status": "Pass", "timestamp": "2025-01-01T00:00:00"}],
         }]}},
     ]
     df = qc("test-subject", asset_names=["asset1", "asset2"], force_update=True)
@@ -158,11 +158,11 @@ def test_qc_single_asset_name_string(mock_client_class):
     mock_client_instance.retrieve_docdb_records.return_value = [
         {"_id": "asset1", "name": "asset1", "quality_control": {"metrics": [{
             "object_type": "QC metric", "name": "Metric A", "stage": "Processing",
-            "modality": {"name": "Test", "abbreviation": "t"}, "value": "pass", "tags": None, "status_history": [],
+            "modality": {"name": "Test", "abbreviation": "t"}, "value": "pass", "tags": None, "status_history": [{"status": "Pass", "timestamp": "2025-01-01T00:00:00"}],
         }]}},
         {"_id": "asset2", "name": "asset2", "quality_control": {"metrics": [{
             "object_type": "QC metric", "name": "Metric B", "stage": "Processing",
-            "modality": {"name": "Test", "abbreviation": "t"}, "value": "fail", "tags": None, "status_history": [],
+            "modality": {"name": "Test", "abbreviation": "t"}, "value": "fail", "tags": None, "status_history": [{"status": "Pass", "timestamp": "2025-01-01T00:00:00"}],
         }]}},
     ]
     df = qc("test-subject", asset_names="asset1", force_update=True)
@@ -178,12 +178,41 @@ def test_qc_missing_asset_names(mock_client_class):
     mock_client_instance.retrieve_docdb_records.return_value = [
         {"_id": "asset1", "name": "asset1", "quality_control": {"metrics": [{
             "object_type": "QC metric", "name": "Metric A", "stage": "Processing",
-            "modality": {"name": "Test", "abbreviation": "t"}, "value": "pass", "tags": None, "status_history": [],
+            "modality": {"name": "Test", "abbreviation": "t"}, "value": "pass", "tags": None, "status_history": [{"status": "Pass", "timestamp": "2025-01-01T00:00:00"}],
         }]}},
     ]
     df = qc("test-subject", asset_names=["asset1", "nonexistent"], force_update=True)
     assert len(df) == 1
     assert df.iloc[0]["name"] == "Metric A"
+
+
+@patch("zombie_squirrel.acorn_helpers.qc.MetadataDbClient")
+def test_qc_status_extracted_from_status_history(mock_client_class):
+    mock_client_instance = MagicMock()
+    mock_client_class.return_value = mock_client_instance
+    mock_client_instance.retrieve_docdb_records.return_value = [{
+        "_id": "test-asset-001", "name": "test-asset",
+        "quality_control": {"metrics": [
+            {
+                "object_type": "QC metric", "name": "Pass Metric", "stage": "Processing",
+                "modality": None, "value": "ok", "tags": None,
+                "status_history": [
+                    {"status": "Pending", "timestamp": "2025-01-01T00:00:00"},
+                    {"status": "Pass", "timestamp": "2025-01-02T00:00:00"},
+                ],
+            },
+            {
+                "object_type": "QC metric", "name": "Fail Metric", "stage": "Raw data",
+                "modality": None, "value": "bad", "tags": None,
+                "status_history": [{"status": "Fail", "timestamp": "2025-01-01T00:00:00"}],
+            },
+        ]},
+    }]
+    df = qc("test-asset", force_update=True)
+    assert "status" in df.columns
+    assert "status_history" not in df.columns
+    assert df[df["name"] == "Pass Metric"].iloc[0]["status"] == "Pass"
+    assert df[df["name"] == "Fail Metric"].iloc[0]["status"] == "Fail"
 
 
 @patch("zombie_squirrel.acorn_helpers.qc.MetadataDbClient")
@@ -194,7 +223,7 @@ def test_qc_numeric_value_converted_to_string(mock_client_class):
         "_id": "test-asset-001", "name": "test-asset",
         "quality_control": {"metrics": [{
             "object_type": "QC metric", "name": "Numeric Metric", "stage": "Processing",
-            "modality": None, "value": 42, "tags": None, "status_history": [],
+            "modality": None, "value": 42, "tags": None, "status_history": [{"status": "Pass", "timestamp": "2025-01-01T00:00:00"}],
         }]},
     }]
     df = qc("test-asset", force_update=True)
