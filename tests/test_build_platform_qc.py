@@ -1,28 +1,22 @@
-"""Unit tests for build_platform_qc script."""
+"""Unit tests for platform_qc acorn."""
 
-import io
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 
-import duckdb
+import zombie_squirrel.acorns as acorns
+from zombie_squirrel.acorn_helpers.platform_qc import platform_qc, PLATFORMS
+from zombie_squirrel.forest import MemoryTree
 
-from scripts.build_platform_qc import (
-    PLATFORMS,
-    S3_BUCKET,
-    S3_PREFIX,
-    QC_PREFIX,
-    build_platform_table,
-    list_qc_subject_ids,
-    upload_parquet,
-)
+
+@pytest.fixture(autouse=True)
+def memory_tree():
+    acorns.TREE = MemoryTree()
 
 
 @pytest.fixture
-def sample_asset_basics():
+def basics_df():
     return pd.DataFrame({
         "name": ["spim_asset_1", "spim_asset_2", "fib_asset_1", "vr_asset_1"],
         "subject_id": ["subj1", "subj1", "subj2", "subj3"],
@@ -35,134 +29,118 @@ def sample_asset_basics():
 
 
 @pytest.fixture
-def sample_qc_data():
+def tag_status_subj1():
     return pd.DataFrame({
-        "name": ["Metric A", "Metric B", "Metric A", "Metric C"],
-        "modality": ["SPIM", "SPIM", "SPIM", "fib"],
-        "stage": ["Processing", "Processing", "Raw data", "Processing"],
-        "value": ["ok", "bad", "ok", "ok"],
-        "status": ["Pass", "Fail", "Pass", "Pass"],
-        "asset_name": ["spim_asset_1", "spim_asset_1", "spim_asset_2", "fib_asset_1"],
-        "subject_id": ["subj1", "subj1", "subj1", "subj2"],
-        "timestamp": pd.to_datetime(["2025-06-01", "2025-06-01", "2025-06-02", "2025-06-03"]),
+        "tag": ["tagA:Suite", "tagB:Suite"],
+        "status": ["Pass", "Fail"],
+        "asset_name": ["spim_asset_1", "spim_asset_1"],
+        "subject_id": ["subj1", "subj1"],
+        "timestamp": pd.to_datetime(["2025-06-01", "2025-06-01"]),
     })
 
 
-def test_list_qc_subject_ids():
-    mock_client = MagicMock()
-    mock_client.get_paginator.return_value.paginate.return_value = [
-        {"Contents": [
-            {"Key": f"{QC_PREFIX}subj1.pqt"},
-            {"Key": f"{QC_PREFIX}subj2.pqt"},
-            {"Key": f"{QC_PREFIX}subj3.pqt"},
-        ]}
-    ]
-    result = list_qc_subject_ids(mock_client)
-    assert result == {"subj1", "subj2", "subj3"}
+@pytest.fixture
+def tag_status_subj2():
+    return pd.DataFrame({
+        "tag": ["tagC:Suite"],
+        "status": ["Pass"],
+        "asset_name": ["fib_asset_1"],
+        "subject_id": ["subj2"],
+        "timestamp": pd.to_datetime(["2025-06-03"]),
+    })
 
 
-def test_list_qc_subject_ids_empty():
-    mock_client = MagicMock()
-    mock_client.get_paginator.return_value.paginate.return_value = [
-        {"Contents": []}
-    ]
-    result = list_qc_subject_ids(mock_client)
-    assert result == set()
+def test_platforms_list():
+    assert "spim" in PLATFORMS
+    assert "fib" in PLATFORMS
+    assert "vr" in PLATFORMS
+    assert "dynamic_foraging" in PLATFORMS
 
 
-def test_build_platform_table_spim(tmp_path, sample_asset_basics, sample_qc_data):
-    qc_path = tmp_path / "qc_subj1.pqt"
-    sample_qc_data[sample_qc_data["subject_id"] == "subj1"].to_parquet(qc_path, index=False)
-
-    basics_path = tmp_path / "asset_basics.pqt"
-    sample_asset_basics.to_parquet(basics_path, index=False)
-
-    con = duckdb.connect()
-    con.execute(f"CREATE TABLE asset_basics AS SELECT * FROM read_parquet('{basics_path}')")
-
-    df = build_platform_table(con, PLATFORMS["spim"], [str(qc_path)])
-    con.close()
-
-    assert "asset_name" in df.columns
-    assert "subject_id" in df.columns
-    assert "instrument_id" in df.columns
-    assert "experimenter" in df.columns
-    assert "metric_name" in df.columns
-    assert "status" in df.columns
-    assert "timestamp" in df.columns
-
-    assert set(df["asset_name"].unique()) == {"spim_asset_1", "spim_asset_2"}
-    assert df[df["asset_name"] == "spim_asset_1"]["instrument_id"].iloc[0] == "rig_a"
-
-    alice_rows = df[df["experimenter"] == "Alice"]
-    assert len(alice_rows) > 0
-    bob_rows = df[df["experimenter"] == "Bob"]
-    assert len(bob_rows) > 0
-    assert alice_rows["asset_name"].iloc[0] == "spim_asset_1"
-
-    statuses = df["status"].unique()
-    assert "Pass" in statuses
-    assert "Fail" in statuses
+def test_platform_qc_cache_hit(basics_df, tag_status_subj1):
+    cached = pd.DataFrame({
+        "asset_name": ["spim_asset_1"],
+        "subject_id": ["subj1"],
+        "instrument_id": ["rig_a"],
+        "experimenter": ["Alice"],
+        "tag": ["tagA:Suite"],
+        "status": ["Pass"],
+        "timestamp": pd.to_datetime(["2025-06-01"]),
+    })
+    acorns.TREE.hide("platform_qc/spim", cached)
+    df = platform_qc("spim", force_update=False)
+    assert len(df) == 1
+    assert df.iloc[0]["tag"] == "tagA:Suite"
 
 
-def test_build_platform_table_unknown_instrument(tmp_path, sample_asset_basics, sample_qc_data):
-    qc_path = tmp_path / "qc_subj2.pqt"
-    sample_qc_data[sample_qc_data["subject_id"] == "subj2"].to_parquet(qc_path, index=False)
-
-    basics_path = tmp_path / "asset_basics.pqt"
-    sample_asset_basics.to_parquet(basics_path, index=False)
-
-    con = duckdb.connect()
-    con.execute(f"CREATE TABLE asset_basics AS SELECT * FROM read_parquet('{basics_path}')")
-
-    df = build_platform_table(con, PLATFORMS["fib"], [str(qc_path)])
-    con.close()
-
-    assert df[df["asset_name"] == "fib_asset_1"]["instrument_id"].iloc[0] == "(unknown)"
-    assert df[df["asset_name"] == "fib_asset_1"]["experimenter"].iloc[0] == "(unknown)"
+def test_platform_qc_empty_cache_raises(basics_df):
+    with pytest.raises(ValueError, match="Cache is empty"):
+        platform_qc("spim", force_update=False)
 
 
-def test_build_platform_table_vr(tmp_path, sample_asset_basics):
-    qc_vr = pd.DataFrame({
-        "name": ["VR Metric"],
-        "modality": ["ecephys"],
-        "stage": ["Processing"],
-        "value": ["good"],
+def test_platform_qc_spim_builds_from_memory(basics_df, tag_status_subj1):
+    acorns.TREE.hide("asset_basics", basics_df)
+    acorns.TREE.hide("qc_tag_status/subj1", tag_status_subj1)
+
+    df = platform_qc("spim", force_update=True)
+
+    assert not df.empty
+    assert set(df.columns) >= {"asset_name", "subject_id", "instrument_id", "experimenter", "tag", "status"}
+    assert set(df["asset_name"].unique()) == {"spim_asset_1"}
+    assert set(df["tag"].unique()) == {"tagA:Suite", "tagB:Suite"}
+
+
+def test_platform_qc_experimenter_exploded(basics_df, tag_status_subj1):
+    acorns.TREE.hide("asset_basics", basics_df)
+    acorns.TREE.hide("qc_tag_status/subj1", tag_status_subj1)
+
+    df = platform_qc("spim", force_update=True)
+
+    experimenters = df["experimenter"].unique().tolist()
+    assert "Alice" in experimenters
+    assert "Bob" in experimenters
+
+
+def test_platform_qc_unknown_instrument(basics_df, tag_status_subj2):
+    acorns.TREE.hide("asset_basics", basics_df)
+    acorns.TREE.hide("qc_tag_status/subj2", tag_status_subj2)
+
+    df = platform_qc("fib", force_update=True)
+
+    assert df.iloc[0]["instrument_id"] == "(unknown)"
+    assert df.iloc[0]["experimenter"] == "(unknown)"
+
+
+def test_platform_qc_vr(basics_df):
+    tag_status = pd.DataFrame({
+        "tag": ["tagD:Suite"],
         "status": ["Pass"],
         "asset_name": ["vr_asset_1"],
         "subject_id": ["subj3"],
         "timestamp": pd.to_datetime(["2025-06-04"]),
     })
-    qc_path = tmp_path / "qc_subj3.pqt"
-    qc_vr.to_parquet(qc_path, index=False)
+    acorns.TREE.hide("asset_basics", basics_df)
+    acorns.TREE.hide("qc_tag_status/subj3", tag_status)
 
-    con = duckdb.connect()
-    basics_path = tmp_path / "asset_basics.pqt"
-    sample_asset_basics.to_parquet(basics_path, index=False)
-    con.execute(f"CREATE TABLE asset_basics AS SELECT * FROM read_parquet('{basics_path}')")
-
-    df = build_platform_table(con, PLATFORMS["vr"], [str(qc_path)])
-    con.close()
+    df = platform_qc("vr", force_update=True)
 
     assert len(df) == 1
-    assert df.iloc[0]["metric_name"] == "VR Metric"
+    assert df.iloc[0]["tag"] == "tagD:Suite"
     assert df.iloc[0]["experimenter"] == "Dave"
-    assert df.iloc[0]["instrument_id"] == "rig_c"
 
 
-def test_upload_parquet():
-    df = pd.DataFrame({"a": [1, 2], "b": ["x", "y"]})
-    mock_client = MagicMock()
+def test_platform_qc_no_qc_data_returns_empty(basics_df):
+    acorns.TREE.hide("asset_basics", basics_df)
+    df = platform_qc("spim", force_update=True)
+    assert df.empty
 
-    upload_parquet(df, mock_client, "test/output.pqt")
 
-    mock_client.put_object.assert_called_once()
-    call_kwargs = mock_client.put_object.call_args[1]
-    assert call_kwargs["Bucket"] == S3_BUCKET
-    assert call_kwargs["Key"] == "test/output.pqt"
+def test_platform_qc_result_cached(basics_df, tag_status_subj1):
+    acorns.TREE.hide("asset_basics", basics_df)
+    acorns.TREE.hide("qc_tag_status/subj1", tag_status_subj1)
 
-    buf = io.BytesIO(call_kwargs["Body"])
-    table = pq.read_table(buf)
-    result = table.to_pandas()
-    assert list(result.columns) == ["a", "b"]
-    assert len(result) == 2
+    platform_qc("spim", force_update=True)
+
+    cached = acorns.TREE.scurry("platform_qc/spim")
+    assert not cached.empty
+

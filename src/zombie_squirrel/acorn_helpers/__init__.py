@@ -5,6 +5,7 @@ from zombie_squirrel.acorn_helpers import (  # noqa: F401
     custom,
     foraging_sessions,
     metadata_core,
+    platform_qc,
     qc,
     raw_to_derived,
     source_data,

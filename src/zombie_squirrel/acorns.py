@@ -46,6 +46,7 @@ NAMES = {
     "core": "metadata_core",
     "foraging": "foraging_sessions",
     "curriculum": "behavior_curriculum",
+    "platform_qc": "platform_qc",
 }
 
 ACORN_REGISTRY: dict[str, Callable[[], Any]] = {}

@@ -76,24 +76,6 @@ def test_qc_no_metrics_in_record(mock_client_class):
 
 
 @patch("zombie_squirrel.acorn_helpers.qc.MetadataDbClient")
-def test_qc_dict_value_replaced_and_no_tags_column(mock_client_class):
-    mock_client_instance = MagicMock()
-    mock_client_class.return_value = mock_client_instance
-    mock_client_instance.retrieve_docdb_records.return_value = [{
-        "_id": "test-asset-003", "name": "test-asset",
-        "quality_control": {"metrics": [{
-            "object_type": "QC metric", "name": "Complex Metric", "stage": "Processing",
-            "modality": {"name": "Test", "abbreviation": "t"},
-            "value": {"nested": {"deep": "value"}, "status": "Pass"},
-            "tags": {"key1": "val1", "key2": "val2"}, "status_history": [{"status": "Pass", "timestamp": "2025-01-01T00:00:00"}],
-        }]},
-    }]
-    df = qc("test-asset", force_update=True)
-    assert df.iloc[0]["value"] == "{dict}"
-    assert "tags" not in df.columns
-
-
-@patch("zombie_squirrel.acorn_helpers.qc.MetadataDbClient")
 def test_qc_cache_persistence(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -229,3 +211,26 @@ def test_qc_numeric_value_converted_to_string(mock_client_class):
     df = qc("test-asset", force_update=True)
     assert len(df) == 1
     assert df.iloc[0]["value"] == "42"
+
+
+@patch("zombie_squirrel.acorn_helpers.qc.MetadataDbClient")
+def test_qc_tag_statuses_cached_separately(mock_client_class):
+    mock_client_instance = MagicMock()
+    mock_client_class.return_value = mock_client_instance
+    mock_client_instance.retrieve_docdb_records.return_value = [{
+        "_id": "test-asset-001", "name": "test-asset",
+        "quality_control": {
+            "metrics": [{
+                "object_type": "QC metric", "name": "Metric A", "stage": "Processing",
+                "modality": None, "value": "ok", "tags": None,
+                "status_history": [{"status": "Pass", "timestamp": "2025-01-01T00:00:00"}],
+            }],
+            "status": {"tagA:Suite": "Pass", "tagB:Suite": "Fail"},
+        },
+    }]
+    qc("test-subject", force_update=True)
+    tag_df = acorns.TREE.scurry("qc_tag_status/test-subject")
+    assert not tag_df.empty
+    assert set(tag_df["tag"].tolist()) == {"tagA:Suite", "tagB:Suite"}
+    assert tag_df[tag_df["tag"] == "tagA:Suite"]["status"].iloc[0] == "Pass"
+

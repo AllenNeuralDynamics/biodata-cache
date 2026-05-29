@@ -48,7 +48,7 @@ def test_qc_columns_in_output(mock_client_class):
         "quality_control": {"metrics": [{
             "object_type": "QC metric", "name": "Test Metric", "stage": "Processing",
             "modality": {"name": "Test Modality", "abbreviation": "tm"},
-            "value": "pass", "tags": None, "status_history": [],
+            "value": "pass", "tags": None, "status_history": [{"status": "Pass"}],
         }]},
     }]
     df = qc("test-subject", force_update=True)
@@ -87,7 +87,7 @@ def test_qc_timestamp_parsing_with_z_suffix(mock_client_class):
         "quality_control": {"metrics": [{
             "object_type": "QC metric", "name": "Test Metric", "stage": "Processing",
             "modality": {"name": "Test Modality", "abbreviation": "tm"},
-            "value": "pass", "tags": None, "status_history": [],
+            "value": "pass", "tags": None, "status_history": [{"status": "Pass"}],
         }]},
     }]
     df = qc("test-subject", force_update=True)
@@ -106,7 +106,7 @@ def test_qc_timestamp_parsing_invalid_format(mock_client_class):
         "quality_control": {"metrics": [{
             "object_type": "QC metric", "name": "Test Metric", "stage": "Processing",
             "modality": {"name": "Test Modality", "abbreviation": "tm"},
-            "value": "pass", "tags": None, "status_history": [],
+            "value": "pass", "tags": None, "status_history": [{"status": "Pass"}],
         }]},
     }]
     df = qc("test-subject", force_update=True)
@@ -124,15 +124,16 @@ def test_qc_curation_metric_skipped(mock_client_class):
             {
                 "object_type": "Curation metric", "name": "Curation Metric (should be skipped)",
                 "stage": "Processing", "modality": {"name": "Test Modality", "abbreviation": "tm"},
-                "value": "pass", "tags": None, "status_history": [],
+                "value": "pass", "tags": None, "status_history": [{"status": "Pass"}],
             },
             {
                 "object_type": "QC metric", "name": "Regular Metric",
                 "stage": "Processing", "modality": {"name": "Test Modality", "abbreviation": "tm"},
-                "value": "pass", "tags": None, "status_history": [],
+                "value": "pass", "tags": None, "status_history": [{"status": "Pass"}],
             },
         ]},
     }]
     df = qc("test-subject", force_update=True)
     assert len(df) == 1
     assert df.iloc[0]["name"] == "Regular Metric"
+

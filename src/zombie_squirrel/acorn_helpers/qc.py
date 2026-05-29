@@ -22,6 +22,7 @@ QC_METRIC_FIELDS = [
 ]
 
 
+
 @acorns.register_acorn(acorns.NAMES["qc"])
 def qc(
     subject_id: str,
@@ -129,6 +130,7 @@ def _fetch_subject_qc(subject_id: str) -> pd.DataFrame:
         return pd.DataFrame()
 
     all_metrics = []
+    all_tag_statuses = []
     for record in records:
         asset_name = record.get("name", "")
         quality_control = record.get("quality_control", {})
@@ -145,10 +147,10 @@ def _fetch_subject_qc(subject_id: str) -> pd.DataFrame:
             except (ValueError, AttributeError):
                 timestamp = None
 
-        if not quality_control or "metrics" not in quality_control:
+        if not quality_control:
             continue
 
-        for metric in quality_control["metrics"]:
+        for metric in quality_control.get("metrics", []):
             if metric.get("object_type", "") == "Curation metric":
                 continue
 
@@ -175,6 +177,17 @@ def _fetch_subject_qc(subject_id: str) -> pd.DataFrame:
             metric_data["timestamp"] = timestamp
             all_metrics.append(metric_data)
 
+        status_dict = quality_control.get("status", {})
+        if isinstance(status_dict, dict):
+            for tag, status_value in status_dict.items():
+                all_tag_statuses.append({
+                    "tag": tag,
+                    "status": status_value,
+                    "asset_name": asset_name,
+                    "subject_id": subject_id_value,
+                    "timestamp": timestamp,
+                })
+
     if not all_metrics:
         logging.warning(
             SquirrelMessage(
@@ -193,11 +206,16 @@ def _fetch_subject_qc(subject_id: str) -> pd.DataFrame:
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     acorns.TREE.hide(cache_key, df)
 
+    if all_tag_statuses:
+        tag_df = pd.DataFrame.from_records(all_tag_statuses)
+        tag_df["timestamp"] = pd.to_datetime(tag_df["timestamp"], utc=True)
+        acorns.TREE.hide(f"qc_tag_status/{subject_id}", tag_df)
+
     logging.info(
         SquirrelMessage(
             tree=acorns.TREE.__class__.__name__,
             acorn=acorns.NAMES["qc"],
-            message=f"Cached QC data for subject {subject_id} ({len(records)} assets, {len(all_metrics)} metrics)",
+            message=f"Cached QC data for subject {subject_id} ({len(records)} assets, {len(all_metrics)} metrics, {len(all_tag_statuses)} tag statuses)",
         ).to_json()
     )
 
