@@ -27,4 +27,5 @@ from zombie_squirrel.acorn_helpers.unique_genotypes import (  # noqa: F401
 from zombie_squirrel.acorn_helpers.unique_subject_ids import (  # noqa: F401
     unique_subject_ids,
 )
+from zombie_squirrel.acorn_helpers.swdb_metadata import swdb_metadata  # noqa: F401
 from zombie_squirrel.utils import get_squirrel_info  # noqa: F401

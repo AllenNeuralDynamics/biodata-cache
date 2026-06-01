@@ -55,8 +55,29 @@ project_names = unique_project_names()
 | `metadata_core` | Presence of core aind-data-schema metadata files per asset (True if file is not null) | `s3://allen-data-views/data-asset-cache/zs_metadata_core.pqt` | metadata | False | `_id`, `_last_modified`, `subject`, `data_description`, `procedures`, `instrument`, `acquisition`, `processing`, `quality_control` |
 | `foraging_sessions` | Foraging behavior sessions with key performance metrics, one row per session | `s3://allen-data-views/data-asset-cache/zs_foraging_sessions.pqt` | metadata | False | `subject_id`, `session_date`, `session`, `nwb_suffix`, `rig`, `trainer`, `task`, `curriculum_name`, `curriculum_version`, `current_stage_actual`, `foraging_eff`, `foraging_eff_random_seed`, `finished_trials`, `finished_rate`, `total_trials`, `bias_naive` |
 | `behavior_curriculum` | Behavior assets with curriculum name and stage, one row per behavior asset | `s3://allen-data-views/data-asset-cache/zs_behavior_curriculum.pqt` | asset | False | `asset_name`, `curriculum_name`, `stage_name`, `stage_node_id` |
+| `swdb_metadata` | Per-project metadata tables for SWDB datasets, one row per data asset (or per asset/stream for BCI) | `s3://allen-data-views/data-asset-cache/zs_swdb_metadata/` | metadata | True (by `dataset`) | See dataset-specific columns below |
 
 The `raw_to_derived` function is not a table stored in S3, instead it is used by passing an asset_name (or list of asset names) and a modality. The function returns the latest derived asset matching the requested pattern.
+
+#### swdb_metadata datasets
+
+`swdb_metadata` is parameterized by `dataset`. Available values:
+
+| Dataset | Project filter | Columns |
+| ------- | -------------- | ------- |
+| `v1dd` | `data_description.project_name = "V1 Deep Dive"` | `project_name`, `_id`, `name`, `subject_id`, `golden_mouse`, `genotype`, `date_of_birth`, `sex`, `modality`, `session_date`, `age`, `session_time`, `column`, `volume` |
+| `bci` | `session.session_type = "BCI single neuron stim"`, `data_level = derived`, `processing >= 2025-08-03` | `project_name`, `session_type`, `_id`, `name`, `subject_id`, `genotype`, `virus`, `date_of_birth`, `sex`, `modality`, `session_date`, `age`, `session_time`, `targeted_structure`, `ophys_fov`, `session_number` |
+| `dynamic_foraging` | `project_name = "Behavior Platform"`, `data_level = derived`, `session >= 2025`, all QC passing | `project_name`, `name`, `subject_id`, `genotype`, `date_of_birth`, `sex`, `modality`, `session_type`, `session_date`, `age`, `session_time`, `trials_total`, `trials_rewarded` |
+| `np_ultra` | `project_name = "NP Ultra and Psychedelics"`, `data_level = derived` | `project_name`, `_id`, `name`, `subject_id`, `genotype`, `date_of_birth`, `sex`, `modality`, `session_date`, `age`, `session_time`, `session_type`, `stimulus_types`, `notes` |
+
+```python
+from zombie_squirrel import swdb_metadata
+
+df = swdb_metadata("v1dd")
+df = swdb_metadata("bci")
+df = swdb_metadata("dynamic_foraging")
+df = swdb_metadata("np_ultra")
+```
 
 ### Custom acorn
 
