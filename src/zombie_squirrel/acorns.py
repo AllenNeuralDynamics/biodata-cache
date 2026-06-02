@@ -47,6 +47,7 @@ NAMES = {
     "foraging": "foraging_sessions",
     "curriculum": "behavior_curriculum",
     "platform_qc": "platform_qc",
+    "swdb": "swdb_metadata",
 }
 
 ACORN_REGISTRY: dict[str, Callable[[], Any]] = {}
