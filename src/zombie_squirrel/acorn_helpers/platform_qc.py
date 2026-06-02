@@ -3,39 +3,90 @@
 import logging
 
 import pandas as pd
+from aind_data_access_api.document_db import MetadataDbClient
 
 import zombie_squirrel.acorns as acorns
 from zombie_squirrel.utils import SquirrelMessage, setup_logging
 
-PLATFORM_FILTERS_SQL = {
-    "spim": "modalities ILIKE '%SPIM%'",
-    "fib": "modalities ILIKE '%fib%'",
-    "vr": "acquisition_type = 'AindVrForaging'",
-    "dynamic_foraging": "acquisition_type SIMILAR TO '(Uncoupled|Coupled)( Without)? Baiting'",
+PLATFORM_FILTERS = {
+    "spim": {
+        "qc_modalities": {"SPIM"},
+    },
+    "fib": {
+        "qc_modalities": {"fib"},
+    },
+    "vr": {
+        "acquisition_type": "AindVrForaging",
+        "qc_modalities": {"behavior", "behavior-videos"},
+    },
+    "dynamic_foraging": {
+        "acquisition_type_regex": r"(Uncoupled|Coupled)( Without)? Baiting",
+        "qc_modalities": {"behavior", "behavior-videos"},
+    },
 }
 
-PLATFORMS = list(PLATFORM_FILTERS_SQL.keys())
+PLATFORMS = list(PLATFORM_FILTERS.keys())
 
 
 def _filter_basics_pandas(df: pd.DataFrame, platform: str) -> pd.DataFrame:
     """Filter asset_basics DataFrame to rows matching the given platform."""
-    if platform == "spim":
-        return df[df["modalities"].str.contains("SPIM", case=False, na=False)]
-    if platform == "fib":
-        return df[df["modalities"].str.contains("fib", case=False, na=False)]
-    if platform == "vr":
-        return df[df["acquisition_type"] == "AindVrForaging"]
-    if platform == "dynamic_foraging":
-        return df[df["acquisition_type"].str.match(r"(Uncoupled|Coupled)( Without)? Baiting", na=False)]
-    return pd.DataFrame()
+    cfg = PLATFORM_FILTERS[platform]
+    modality_pattern = "|".join(cfg["qc_modalities"])
+    mask = df["modalities"].str.contains(modality_pattern, case=False, na=False)
+    if "acquisition_type" in cfg:
+        mask = mask & (df["acquisition_type"] == cfg["acquisition_type"])
+    if "acquisition_type_regex" in cfg:
+        mask = mask & df["acquisition_type"].str.match(cfg["acquisition_type_regex"], na=False)
+    return df[mask]
+
+
+def _filter_tags_by_modality(quality_control: dict, target_modalities: set[str]) -> list[tuple[str, str]]:
+    """Return (tag_key, status) pairs from the status dict filtered by modality.
+
+    A tag is included if:
+    - At least one metric with that tag has a modality matching target_modalities, OR
+    - The tag key itself is one of the target modalities (modality-level aggregation).
+    """
+    metrics = quality_control.get("metrics", [])
+    status_dict = quality_control.get("status", {})
+    if not isinstance(status_dict, dict) or not status_dict:
+        return []
+
+    tag_key_modalities: dict[str, set[str]] = {}
+    for metric in metrics:
+        modality = metric.get("modality")
+        if isinstance(modality, dict):
+            mod_abbr = modality.get("abbreviation", "")
+        else:
+            mod_abbr = ""
+
+        tags = metric.get("tags") or {}
+        if isinstance(tags, dict):
+            for tag_type, tag_value in tags.items():
+                key = f"{tag_type}:{tag_value}"
+                tag_key_modalities.setdefault(key, set()).add(mod_abbr)
+
+        if mod_abbr:
+            tag_key_modalities.setdefault(mod_abbr, set()).add(mod_abbr)
+
+    result = []
+    for status_key, status_value in status_dict.items():
+        associated_mods = tag_key_modalities.get(status_key, set())
+        if associated_mods & target_modalities:
+            result.append((status_key, status_value))
+        elif status_key in target_modalities:
+            result.append((status_key, status_value))
+
+    return result
 
 
 @acorns.register_acorn("platform_qc")
 def platform_qc(platform: str, force_update: bool = False) -> pd.DataFrame:
     """Build a platform-level QC table with tag-level status data.
 
-    One row per (asset, tag) showing the aggregated pass/fail/pending status
-    for that tag group. Joined with asset_basics for instrument and experimenter context.
+    Pulls quality_control metadata directly from DocDB, then filters tags
+    to only those whose underlying metrics match the platform's modality.
+    Joined with asset_basics for instrument and experimenter context.
     Results are cached per platform.
 
     Args:
@@ -69,97 +120,7 @@ def platform_qc(platform: str, force_update: bool = False) -> pd.DataFrame:
 
 
 def _build(platform: str) -> pd.DataFrame:
-    """Dispatch to the appropriate build implementation based on the active tree."""
-    from zombie_squirrel.forest import S3Tree
-
-    if isinstance(acorns.TREE, S3Tree):
-        return _build_s3(platform)
-    return _build_memory(platform)
-
-
-def _build_s3(platform: str) -> pd.DataFrame:
-    """Build platform QC using DuckDB for efficient S3 batch reads."""
-    import boto3
-    import duckdb
-
-    bucket = acorns.TREE.bucket
-    qc_prefix = "data-asset-cache/zs_qc/"
-    tag_status_prefix = "data-asset-cache/zs_qc_tag_status/"
-
-    s3_client = boto3.client("s3")
-    paginator = s3_client.get_paginator("list_objects_v2")
-    available_subjects: set[str] = set()
-    for page in paginator.paginate(Bucket=bucket, Prefix=tag_status_prefix):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            if key.endswith(".pqt"):
-                available_subjects.add(key.split("/")[-1].replace(".pqt", ""))
-
-    con = duckdb.connect()
-    con.execute("INSTALL httpfs; LOAD httpfs;")
-    con.execute("SET s3_region = 'us-west-2';")
-
-    asset_basics_url = f"s3://{bucket}/data-asset-cache/zs_asset_basics.pqt"
-    con.execute(f"CREATE TABLE asset_basics AS SELECT * FROM read_parquet('{asset_basics_url}')")
-
-    platform_subjects = set(
-        con.execute(
-            f"SELECT DISTINCT subject_id FROM asset_basics WHERE {PLATFORM_FILTERS_SQL[platform]}"
-        ).fetchdf()["subject_id"].dropna().tolist()
-    )
-
-    matching = platform_subjects & available_subjects
-    if not matching:
-        con.close()
-        return pd.DataFrame()
-
-    qc_urls = [f"s3://{bucket}/{tag_status_prefix}{sid}.pqt" for sid in sorted(matching)]
-    qc_url_list = ", ".join(f"'{u}'" for u in qc_urls)
-
-    con.execute(f"""
-        CREATE TABLE qc_data AS
-        SELECT tag, status, asset_name, subject_id, timestamp
-        FROM read_parquet([{qc_url_list}], union_by_name=true)
-    """)
-
-    sql = f"""
-    WITH platform_assets AS (
-        SELECT name AS asset_name,
-               subject_id,
-               COALESCE(instrument_id, '(unknown)') AS instrument_id,
-               COALESCE(experimenters, '(unknown)') AS experimenters,
-               acquisition_start_time AS timestamp
-        FROM asset_basics
-        WHERE {PLATFORM_FILTERS_SQL[platform]}
-    ),
-    unnested AS (
-        SELECT asset_name,
-               subject_id,
-               instrument_id,
-               TRIM(exp) AS experimenter,
-               timestamp
-        FROM platform_assets,
-             UNNEST(STRING_SPLIT(experimenters, ',')) AS t(exp)
-    )
-    SELECT u.asset_name,
-           u.subject_id,
-           u.instrument_id,
-           u.experimenter,
-           q.tag,
-           q.status,
-           u.timestamp
-    FROM unnested u
-    JOIN qc_data q ON q.asset_name = u.asset_name
-    ORDER BY u.timestamp DESC, u.asset_name, q.tag
-    """
-
-    df = con.execute(sql).fetchdf()
-    con.close()
-    return df
-
-
-def _build_memory(platform: str) -> pd.DataFrame:
-    """Build platform QC by iterating over cached per-subject tag status DataFrames."""
+    """Build platform QC by querying DocDB for quality_control in batches."""
     from zombie_squirrel.acorn_helpers.asset_basics import asset_basics
 
     basics_df = asset_basics()
@@ -167,27 +128,58 @@ def _build_memory(platform: str) -> pd.DataFrame:
     if platform_df.empty:
         return pd.DataFrame()
 
-    subject_ids = platform_df["subject_id"].dropna().unique()
-    all_qc: list[pd.DataFrame] = []
-    for subject_id in subject_ids:
-        tag_df = acorns.TREE.scurry(f"qc_tag_status/{subject_id}")
-        if not tag_df.empty:
-            all_qc.append(tag_df)
+    cfg = PLATFORM_FILTERS[platform]
+    target_modalities = cfg["qc_modalities"]
 
-    if not all_qc:
+    asset_names = platform_df["name"].tolist()
+
+    client = MetadataDbClient(
+        host=acorns.API_GATEWAY_HOST,
+        version="v2",
+    )
+
+    all_rows: list[dict] = []
+    batch_size = 50
+    for i in range(0, len(asset_names), batch_size):
+        batch = asset_names[i : i + batch_size]
+        records = client.retrieve_docdb_records(
+            filter_query={"name": {"$in": batch}},
+            projection={
+                "name": 1,
+                "quality_control": 1,
+                "subject.subject_id": 1,
+            },
+            limit=0,
+        )
+        for record in records:
+            qc_data = record.get("quality_control")
+            if not qc_data:
+                continue
+            asset_name = record.get("name", "")
+            subject_id = record.get("subject", {}).get("subject_id", "")
+            filtered_tags = _filter_tags_by_modality(qc_data, target_modalities)
+            for tag, tag_status in filtered_tags:
+                all_rows.append({
+                    "asset_name": asset_name,
+                    "subject_id": subject_id,
+                    "tag": tag,
+                    "status": tag_status,
+                })
+
+    if not all_rows:
         return pd.DataFrame()
 
-    qc_combined = pd.concat(all_qc, ignore_index=True)
+    qc_df = pd.DataFrame.from_records(all_rows)
 
-    basics_sub = platform_df[["name", "subject_id", "instrument_id", "experimenters"]].rename(
-        columns={"name": "asset_name"}
+    basics_sub = platform_df[["name", "subject_id", "instrument_id", "experimenters", "acquisition_start_time"]].rename(
+        columns={"name": "asset_name", "acquisition_start_time": "timestamp"}
     ).copy()
 
-    merged = qc_combined.merge(basics_sub, on=["asset_name", "subject_id"], how="inner")
+    merged = qc_df.merge(basics_sub, on=["asset_name", "subject_id"], how="inner")
     merged["instrument_id"] = merged["instrument_id"].fillna("(unknown)")
     merged["experimenters"] = merged["experimenters"].fillna("(unknown)").replace("", "(unknown)")
 
-    rows = []
+    rows: list[dict] = []
     for _, row in merged.iterrows():
         for exp in str(row["experimenters"]).split(","):
             r = row.to_dict()
