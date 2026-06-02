@@ -66,8 +66,8 @@ The `raw_to_derived` function is not a table stored in S3, instead it is used by
 | Dataset | Project filter | Columns |
 | ------- | -------------- | ------- |
 | `v1dd` | `data_description.project_name = "V1 Deep Dive"` | `project_name`, `_id`, `name`, `subject_id`, `golden_mouse`, `genotype`, `date_of_birth`, `sex`, `modality`, `session_date`, `age`, `session_time`, `column`, `volume` |
-| `bci` | `session.session_type = "BCI single neuron stim"`, `data_level = derived`, `processing >= 2025-08-03` | `project_name`, `session_type`, `_id`, `name`, `subject_id`, `genotype`, `virus`, `date_of_birth`, `sex`, `modality`, `session_date`, `age`, `session_time`, `targeted_structure`, `ophys_fov`, `session_number` |
-| `dynamic_foraging` | `project_name = "Behavior Platform"`, `data_level = derived`, `session >= 2025`, all QC passing | `project_name`, `name`, `subject_id`, `genotype`, `date_of_birth`, `sex`, `modality`, `session_type`, `session_date`, `age`, `session_time`, `trials_total`, `trials_rewarded` |
+| `bci` | `acquisition.acquisition_type = "BCI single neuron stim"`, `data_level = derived`, `processing >= 2025-08-03` | `project_name`, `session_type`, `_id`, `name`, `subject_id`, `genotype`, `virus`, `date_of_birth`, `sex`, `modality`, `session_date`, `age`, `session_time`, `targeted_structure`, `ophys_fov`, `session_number` |
+| `dynamic_foraging` | `project_name = "Behavior Platform"`, `data_level = derived`, `acquisition >= 2025`, `quality_control.status` all `"Pass"` | `project_name`, `name`, `subject_id`, `genotype`, `date_of_birth`, `sex`, `modality`, `session_type`, `session_date`, `age`, `session_time`, `trials_total`, `trials_rewarded` |
 | `np_ultra` | `project_name = "NP Ultra and Psychedelics"`, `data_level = derived` | `project_name`, `_id`, `name`, `subject_id`, `genotype`, `date_of_birth`, `sex`, `modality`, `session_date`, `age`, `session_time`, `session_type`, `stimulus_types`, `notes` |
 
 ```python

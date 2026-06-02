@@ -50,23 +50,21 @@ def test_force_update_replaces_cache(mock_client_class):
     cached = pd.DataFrame({"name": ["old_asset"], "subject_id": ["sub1"]})
     acorns.TREE.hide("swdb_metadata/v1dd", cached)
 
+    full_record = {
+        "_id": "abc",
+        "name": "v1dd_asset",
+        "data_description": {
+            "subject_id": "sub1",
+            "project_name": "V1 Deep Dive",
+            "modalities": [{"name": "SPIM"}],
+            "tags": ["Column 1", "Volume 2"],
+        },
+        "subject": {"subject_details": {"genotype": "wt", "date_of_birth": "2024-01-01", "sex": "M"}},
+        "acquisition": {"acquisition_start_time": "2025-03-01T10:00:00"},
+    }
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
-    mock_client.aggregate_docdb_records.return_value = [
-        {
-            "_id": "abc",
-            "name": "v1dd_asset",
-            "subject_id": "sub1",
-            "genotype": "wt",
-            "date_of_birth": "2024-01-01",
-            "sex": "M",
-            "session_time": "2025-03-01T10:00:00",
-            "project_name": "V1 Deep Dive",
-            "modality": "SPIM",
-            "column": "Column 1",
-            "volume": "Volume 2",
-        }
-    ]
+    mock_client.retrieve_docdb_records.side_effect = [[{"_id": "abc"}], [full_record]]
 
     df = swdb_metadata("v1dd", force_update=True)
     assert len(df) == 1
@@ -78,103 +76,85 @@ def test_force_update_replaces_cache(mock_client_class):
 
 @patch("zombie_squirrel.acorn_helpers.swdb_metadata.MetadataDbClient")
 def test_v1dd_golden_mouse(mock_client_class):
+    full_record = {
+        "_id": "abc",
+        "name": "v1dd_asset",
+        "data_description": {
+            "subject_id": "409828",
+            "project_name": "V1 Deep Dive",
+            "modalities": [{"name": "SPIM"}],
+            "tags": ["Column 3", "Volume 5"],
+        },
+        "subject": {"subject_details": {"genotype": "wt", "date_of_birth": "2024-01-01", "sex": "M"}},
+        "acquisition": {"acquisition_start_time": "2025-03-01T10:00:00"},
+    }
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
-    mock_client.aggregate_docdb_records.return_value = [
-        {
-            "_id": "abc",
-            "name": "v1dd_asset",
-            "subject_id": "409828",
-            "genotype": "wt",
-            "date_of_birth": "2024-01-01",
-            "sex": "M",
-            "session_time": "2025-03-01T10:00:00",
-            "project_name": "V1 Deep Dive",
-            "modality": "SPIM",
-            "column": "Column 3",
-            "volume": "Volume 5",
-        }
-    ]
+    mock_client.retrieve_docdb_records.side_effect = [[{"_id": "abc"}], [full_record]]
     df = swdb_metadata("v1dd", force_update=True)
     assert df.iloc[0]["golden_mouse"]
 
 
 @patch("zombie_squirrel.acorn_helpers.swdb_metadata.MetadataDbClient")
 def test_dynamic_foraging_deduplication(mock_client_class):
+    record = {
+        "_id": "abc",
+        "name": "asset_1",
+        "data_description": {
+            "subject_id": "sub1",
+            "project_name": "Behavior Platform",
+            "modalities": [{"name": "behavior"}],
+        },
+        "subject": {"genotype": "wt", "date_of_birth": "2024-01-01", "sex": "F"},
+        "acquisition": {
+            "acquisition_type": "Coupled Baiting",
+            "acquisition_start_time": "2025-04-01T09:00:00",
+        },
+        "quality_control": {"status": {"video": "Pass", "behavior": "Pass"}},
+        "session": {
+            "stimulus_epochs": [{"trials_total": 200, "trials_rewarded": 150}],
+        },
+    }
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
-    mock_client.aggregate_docdb_records.return_value = [
-        {
-            "name": "asset_1",
-            "subject_id": "sub1",
-            "genotype": "wt",
-            "date_of_birth": "2024-01-01",
-            "sex": "F",
-            "session_time": "2025-04-01T09:00:00",
-            "project_name": "Behavior Platform",
-            "modality": "behavior",
-            "session_type": "Coupled Baiting",
-            "trials_total": 200,
-            "trials_rewarded": 150,
-        },
-        {
-            "name": "asset_1",
-            "subject_id": "sub1",
-            "genotype": "wt",
-            "date_of_birth": "2024-01-01",
-            "sex": "F",
-            "session_time": "2025-04-01T09:00:00",
-            "project_name": "Behavior Platform",
-            "modality": "behavior",
-            "session_type": "Coupled Baiting",
-            "trials_total": 200,
-            "trials_rewarded": 150,
-        },
-    ]
+    mock_client.retrieve_docdb_records.side_effect = [[{"_id": "abc"}, {"_id": "abc"}], [record, record]]
     df = swdb_metadata("dynamic_foraging", force_update=True)
     assert len(df) == 1
 
 
 @patch("zombie_squirrel.acorn_helpers.swdb_metadata.MetadataDbClient")
 def test_bci_problem_assets_excluded(mock_client_class):
+    def _bci_record(_id, name, subject_id, session_time):
+        return {
+            "_id": _id,
+            "name": name,
+            "data_description": {
+                "subject_id": subject_id,
+                "project_name": "BCI",
+                "modalities": [{"name": "ophys"}],
+            },
+            "subject": {"genotype": "wt", "date_of_birth": "2024-06-01", "sex": "M"},
+            "acquisition": {
+                "acquisition_type": "BCI single neuron stim",
+                "acquisition_start_time": session_time,
+            },
+            "procedures": {"subject_procedures": [{"procedures": [{"injection_materials": [{"name": "AAV"}]}]}]},
+            "session": {
+                "data_streams": [{"stack_parameters": {"targeted_structure": "V1"}, "ophys_fovs": [{"notes": "note"}]}],
+                "stimulus_epochs": [],
+            },
+        }
+
+    problem = _bci_record(
+        "abc",
+        "single-plane-ophys_731015_2025-01-28_17-40-57_processed_2025-08-04_04-38-08",
+        "731015",
+        "2025-01-28T17:40:57",
+    )
+    good = _bci_record("def", "good_asset", "sub2", "2025-05-01T12:00:00")
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
-    mock_client.aggregate_docdb_records.return_value = [
-        {
-            "_id": "abc",
-            "name": "single-plane-ophys_731015_2025-01-28_17-40-57_processed_2025-08-04_04-38-08",
-            "subject_id": "731015",
-            "genotype": "wt",
-            "date_of_birth": "2024-06-01",
-            "sex": "M",
-            "session_time": "2025-01-28T17:40:57",
-            "project_name": "BCI",
-            "modality": "ophys",
-            "session_type": "BCI single neuron stim",
-            "virus": "AAV",
-            "targeted_structure": "V1",
-            "ophys_fov": "note",
-            "session_number": 1,
-            "stimulus_epochs": [],
-        },
-        {
-            "_id": "def",
-            "name": "good_asset",
-            "subject_id": "sub2",
-            "genotype": "wt",
-            "date_of_birth": "2024-06-01",
-            "sex": "F",
-            "session_time": "2025-05-01T12:00:00",
-            "project_name": "BCI",
-            "modality": "ophys",
-            "session_type": "BCI single neuron stim",
-            "virus": "AAV",
-            "targeted_structure": "V1",
-            "ophys_fov": "note",
-            "session_number": 2,
-            "stimulus_epochs": [],
-        },
-    ]
+    mock_client.retrieve_docdb_records.side_effect = [[{"_id": "abc"}, {"_id": "def"}], [problem, good]]
     df = swdb_metadata("bci", force_update=True)
     assert "single-plane-ophys_731015" not in df["name"].values
     assert "good_asset" in df["name"].values
@@ -182,36 +162,27 @@ def test_bci_problem_assets_excluded(mock_client_class):
 
 @patch("zombie_squirrel.acorn_helpers.swdb_metadata.MetadataDbClient")
 def test_np_ultra_session_types(mock_client_class):
+    def _np_record(_id, name, session_time):
+        return {
+            "_id": _id,
+            "name": name,
+            "data_description": {
+                "subject_id": "sub1",
+                "project_name": "NP Ultra and Psychedelics",
+                "modalities": [{"name": "ecephys"}],
+            },
+            "subject": {"genotype": "wt", "date_of_birth": "2024-01-15", "sex": "M"},
+            "acquisition": {"acquisition_start_time": session_time},
+            "session": {"stimulus_epochs": []},
+        }
+
+    records = [
+        _np_record("a1", "np_asset_1", "2025-02-01T10:00:00"),
+        _np_record("a2", "np_asset_2", "2025-03-01T10:00:00"),
+    ]
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
-    mock_client.aggregate_docdb_records.return_value = [
-        {
-            "_id": "a1",
-            "name": "np_asset_1",
-            "subject_id": "sub1",
-            "genotype": "wt",
-            "date_of_birth": "2024-01-15",
-            "sex": "M",
-            "session_time": "2025-02-01T10:00:00",
-            "project_name": "NP Ultra and Psychedelics",
-            "modality": "ecephys",
-            "stimulus_epochs": [],
-            "notes": [],
-        },
-        {
-            "_id": "a2",
-            "name": "np_asset_2",
-            "subject_id": "sub1",
-            "genotype": "wt",
-            "date_of_birth": "2024-01-15",
-            "sex": "M",
-            "session_time": "2025-03-01T10:00:00",
-            "project_name": "NP Ultra and Psychedelics",
-            "modality": "ecephys",
-            "stimulus_epochs": [],
-            "notes": [],
-        },
-    ]
+    mock_client.retrieve_docdb_records.side_effect = [[{"_id": "a1"}, {"_id": "a2"}], records]
     df = swdb_metadata("np_ultra", force_update=True)
     assert list(df["session_type"]) == ["saline", "psilocybin"]
     assert isinstance(df.iloc[0]["stimulus_types"], list)
