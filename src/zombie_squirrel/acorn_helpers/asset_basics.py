@@ -9,6 +9,8 @@ import zombie_squirrel.acorns as acorns
 from zombie_squirrel.squirrel import Column
 from zombie_squirrel.utils import (
     SquirrelMessage,
+    normalize_experimenters,
+    normalize_instrument_id,
     setup_logging,
 )
 
@@ -79,8 +81,11 @@ def asset_basics(force_update: bool = False) -> pd.DataFrame:
                 "location",
                 "name",
                 "experimenters",
+                "experimenters_normalized",
                 "instrument_id",
+                "instrument_id_normalized",
                 "investigators",
+                "investigators_normalized",
             ]
         )
         client = MetadataDbClient(
@@ -181,9 +186,16 @@ def asset_basics(force_update: bool = False) -> pd.DataFrame:
                     e if isinstance(e, str) else e.get("name", "")
                     for e in (record.get("acquisition", {}).get("experimenters", []) or [])
                 ),
+                "experimenters_normalized": normalize_experimenters(
+                    [e if isinstance(e, str) else e.get("name", "") for e in (record.get("acquisition", {}).get("experimenters", []) or [])]
+                ),
                 "instrument_id": record.get("acquisition", {}).get("instrument_id", None),
+                "instrument_id_normalized": normalize_instrument_id(record.get("acquisition", {}).get("instrument_id", None)),
                 "investigators": ", ".join(
                     i.get("name", "") for i in (record.get("data_description", {}).get("investigators", []) or [])
+                ),
+                "investigators_normalized": normalize_experimenters(
+                    [i.get("name", "") for i in (record.get("data_description", {}).get("investigators", []) or [])]
                 ),
             }
             records.append(flat_record)
@@ -219,6 +231,9 @@ def asset_basics_columns() -> list[Column]:
         Column(name="location", description="Location of the asset in S3"),
         Column(name="name", description="Asset name"),
         Column(name="experimenters", description="Acquisition experimenters, comma-separated if multiple"),
+        Column(name="experimenters_normalized", description="Normalized, deduplicated, sorted list of experimenter display names"),
         Column(name="instrument_id", description="Instrument ID used for the acquisition"),
+        Column(name="instrument_id_normalized", description="Normalized short instrument name derived from instrument_id"),
         Column(name="investigators", description="Investigators from data_description, comma-separated if multiple"),
+        Column(name="investigators_normalized", description="Normalized, deduplicated, sorted list of investigator display names"),
     ]

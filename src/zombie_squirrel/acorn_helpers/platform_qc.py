@@ -171,12 +171,13 @@ def _build(platform: str) -> pd.DataFrame:
 
     qc_df = pd.DataFrame.from_records(all_rows)
 
-    basics_sub = platform_df[["name", "subject_id", "instrument_id", "experimenters", "acquisition_start_time"]].rename(
+    basics_sub = platform_df[["name", "subject_id", "instrument_id", "instrument_id_normalized", "experimenters", "acquisition_start_time"]].rename(
         columns={"name": "asset_name", "acquisition_start_time": "timestamp"}
     ).copy()
 
     merged = qc_df.merge(basics_sub, on=["asset_name", "subject_id"], how="inner")
     merged["instrument_id"] = merged["instrument_id"].fillna("(unknown)")
+    merged["instrument_id_normalized"] = merged["instrument_id_normalized"].fillna("")
     merged["experimenters"] = merged["experimenters"].fillna("(unknown)").replace("", "(unknown)")
 
     rows: list[dict] = []
@@ -191,5 +192,5 @@ def _build(platform: str) -> pd.DataFrame:
 
     result = pd.DataFrame(rows)
     result = result.drop(columns=["experimenters"])
-    cols = ["asset_name", "subject_id", "instrument_id", "experimenter", "tag", "status", "timestamp"]
+    cols = ["asset_name", "subject_id", "instrument_id", "instrument_id_normalized", "experimenter", "tag", "status", "timestamp"]
     return result[[c for c in cols if c in result.columns]]
