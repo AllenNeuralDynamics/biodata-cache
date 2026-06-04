@@ -6,6 +6,7 @@ import pandas as pd
 from aind_data_access_api.document_db import MetadataDbClient
 
 import zombie_squirrel.acorns as acorns
+from zombie_squirrel.squirrel import Column
 from zombie_squirrel.utils import SquirrelMessage, setup_logging
 
 PLATFORM_FILTERS = {
@@ -94,8 +95,7 @@ def platform_qc(platform: str, force_update: bool = False) -> pd.DataFrame:
         force_update: If True, bypass cache and rebuild from source data.
 
     Returns:
-        DataFrame with columns: asset_name, subject_id, instrument_id, experimenter,
-        tag, status, timestamp.
+        DataFrame with columns: asset_name, tag, status, timestamp.
     """
     cache_key = f"platform_qc/{platform}"
     df = acorns.TREE.scurry(cache_key)
@@ -144,11 +144,7 @@ def _build(platform: str) -> pd.DataFrame:
         batch = asset_names[i : i + batch_size]
         records = client.retrieve_docdb_records(
             filter_query={"name": {"$in": batch}},
-            projection={
-                "name": 1,
-                "quality_control": 1,
-                "subject.subject_id": 1,
-            },
+            projection={"name": 1, "quality_control": 1},
             limit=0,
         )
         for record in records:
@@ -156,12 +152,10 @@ def _build(platform: str) -> pd.DataFrame:
             if not qc_data:
                 continue
             asset_name = record.get("name", "")
-            subject_id = record.get("subject", {}).get("subject_id", "")
             filtered_tags = _filter_tags_by_modality(qc_data, target_modalities)
             for tag, tag_status in filtered_tags:
                 all_rows.append({
                     "asset_name": asset_name,
-                    "subject_id": subject_id,
                     "tag": tag,
                     "status": tag_status,
                 })
@@ -171,26 +165,18 @@ def _build(platform: str) -> pd.DataFrame:
 
     qc_df = pd.DataFrame.from_records(all_rows)
 
-    basics_sub = platform_df[["name", "subject_id", "instrument_id", "instrument_id_normalized", "experimenters", "acquisition_start_time"]].rename(
+    timestamps = platform_df[["name", "acquisition_start_time"]].rename(
         columns={"name": "asset_name", "acquisition_start_time": "timestamp"}
-    ).copy()
+    )
+    result = qc_df.merge(timestamps, on="asset_name", how="left")
+    return result[["asset_name", "tag", "status", "timestamp"]]
 
-    merged = qc_df.merge(basics_sub, on=["asset_name", "subject_id"], how="inner")
-    merged["instrument_id"] = merged["instrument_id"].fillna("(unknown)")
-    merged["instrument_id_normalized"] = merged["instrument_id_normalized"].fillna("")
-    merged["experimenters"] = merged["experimenters"].fillna("(unknown)").replace("", "(unknown)")
 
-    rows: list[dict] = []
-    for _, row in merged.iterrows():
-        for exp in str(row["experimenters"]).split(","):
-            r = row.to_dict()
-            r["experimenter"] = exp.strip()
-            rows.append(r)
-
-    if not rows:
-        return pd.DataFrame()
-
-    result = pd.DataFrame(rows)
-    result = result.drop(columns=["experimenters"])
-    cols = ["asset_name", "subject_id", "instrument_id", "instrument_id_normalized", "experimenter", "tag", "status", "timestamp"]
-    return result[[c for c in cols if c in result.columns]]
+def platform_qc_columns() -> list[Column]:
+    """Return platform_qc acorn column definitions."""
+    return [
+        Column(name="asset_name", description="Asset name, joinable with asset_basics.name"),
+        Column(name="tag", description="QC tag key"),
+        Column(name="status", description="QC status for this tag"),
+        Column(name="timestamp", description="Asset acquisition start time"),
+    ]

@@ -99,9 +99,6 @@ def test_filter_tags_by_modality_spim():
 def test_platform_qc_cache_hit():
     cached = pd.DataFrame({
         "asset_name": ["spim_asset_1"],
-        "subject_id": ["subj1"],
-        "instrument_id": ["rig_a"],
-        "experimenter": ["Alice"],
         "tag": ["type:Alignment"],
         "status": ["Pass"],
         "timestamp": pd.to_datetime(["2025-06-01"]),
@@ -149,41 +146,6 @@ def test_platform_qc_dynamic_foraging_filters_modality(mock_client_class, basics
     assert "behavior-videos" in tags
     assert "type:CMOS Floor signal" not in tags
     assert "fib" not in tags
-
-
-@patch("zombie_squirrel.acorn_helpers.platform_qc.MetadataDbClient")
-def test_platform_qc_experimenter_exploded(mock_client_class, basics_df):
-    mock_client = MagicMock()
-    mock_client_class.return_value = mock_client
-    mock_client.retrieve_docdb_records.return_value = [MOCK_SPIM_RECORD]
-
-    acorns.TREE.hide("asset_basics", basics_df)
-    df = platform_qc("spim", force_update=True)
-
-    experimenters = df["experimenter"].unique().tolist()
-    assert "Alice" in experimenters
-    assert "Bob" in experimenters
-
-
-@patch("zombie_squirrel.acorn_helpers.platform_qc.MetadataDbClient")
-def test_platform_qc_unknown_instrument(mock_client_class, basics_df):
-    mock_client = MagicMock()
-    mock_client_class.return_value = mock_client
-    fib_record = {
-        "name": "fib_asset_1",
-        "subject": {"subject_id": "subj2"},
-        "quality_control": {
-            "metrics": [{"name": "m1", "modality": {"abbreviation": "fib"}, "tags": {"type": "Signal"}}],
-            "status": {"type:Signal": "Pass", "fib": "Pass"},
-        },
-    }
-    mock_client.retrieve_docdb_records.return_value = [fib_record]
-
-    acorns.TREE.hide("asset_basics", basics_df)
-    df = platform_qc("fib", force_update=True)
-
-    assert df.iloc[0]["instrument_id"] == "(unknown)"
-    assert df.iloc[0]["experimenter"] == "(unknown)"
 
 
 @patch("zombie_squirrel.acorn_helpers.platform_qc.MetadataDbClient")

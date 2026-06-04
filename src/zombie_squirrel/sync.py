@@ -7,6 +7,7 @@ from .acorn_helpers.assets_smartspim import assets_smartspim_columns
 from .acorn_helpers.foraging_sessions import foraging_sessions_columns
 from .acorn_helpers.behavior_curriculum import behavior_curriculum_columns
 from .acorn_helpers.platform_fib import platform_fib_columns
+from .acorn_helpers.platform_qc import platform_qc_columns, PLATFORMS
 from .acorn_helpers.metadata_upgrade import metadata_upgrade_columns
 from .acorn_helpers.qc import qc_columns
 from .acorn_helpers.source_data import source_data_columns
@@ -113,6 +114,15 @@ def publish_squirrel_metadata() -> None:
             type=AcornType.asset,
             columns=behavior_curriculum_columns(),
         ),
+        Acorn(
+            name=NAMES["platform_qc"],
+            description="Tag-level QC statuses per platform, one row per asset/tag combination",
+            location=TREE.get_location("platform_qc", partitioned=True),
+            partitioned=True,
+            partition_key="platform",
+            type=AcornType.platform,
+            columns=platform_qc_columns(),
+        ),
     ]
     squirrel = Squirrel(acorns=acorn_list)
     TREE.plant("squirrel.json", squirrel.model_dump_json())
@@ -154,5 +164,8 @@ def hide_acorns():
     ACORN_REGISTRY[NAMES["fib"]](force_update=True)
     ACORN_REGISTRY[NAMES["foraging"]](force_update=True)
     ACORN_REGISTRY[NAMES["curriculum"]](force_update=True)
+
+    for platform in PLATFORMS:
+        ACORN_REGISTRY[NAMES["platform_qc"]](platform=platform, force_update=True)
 
     publish_squirrel_metadata()

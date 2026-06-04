@@ -8,7 +8,7 @@ import pandas as pd
 
 import zombie_squirrel.acorns as acorns
 from zombie_squirrel.squirrel import Column
-from zombie_squirrel.utils import SquirrelMessage, setup_logging
+from zombie_squirrel.utils import SquirrelMessage, normalize_name, setup_logging
 
 _SOURCE_BUCKET = "aind-behavior-data"
 _SOURCE_KEY = "foraging_nwb_bonsai_processed/df_sessions.pkl"
@@ -48,7 +48,9 @@ def _fetch_foraging_sessions() -> pd.DataFrame:
     for src_col, dest_col in _COLUMN_MAP.items():
         data[dest_col] = raw[src_col].values
 
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+    df["trainer_normalized"] = df["trainer"].apply(lambda v: normalize_name(v) if pd.notna(v) else "")
+    return df
 
 
 @acorns.register_acorn(acorns.NAMES["foraging"])
@@ -94,6 +96,7 @@ def foraging_sessions_columns() -> list[Column]:
         Column(name="nwb_suffix", description="NWB file suffix identifying the session file"),
         Column(name="rig", description="Rig/apparatus used for the session"),
         Column(name="trainer", description="User/trainer who ran the session"),
+        Column(name="trainer_normalized", description="Normalized display name of the trainer"),
         Column(name="task", description="Task name (e.g. Coupled Baiting)"),
         Column(name="curriculum_name", description="Auto-training curriculum name"),
         Column(name="curriculum_version", description="Auto-training curriculum version"),

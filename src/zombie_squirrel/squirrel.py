@@ -12,6 +12,7 @@ class AcornType(str, Enum):
     asset = "asset"
     event = "event"
     realtime = "realtime"
+    platform = "platform"
 
 
 class Column(BaseModel):
