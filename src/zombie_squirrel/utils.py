@@ -63,6 +63,18 @@ def _merge_key(display_name: str) -> str:
     return display_name.lower().replace(" ", "")
 
 
+def _resolve_first_names(names: list) -> list:
+    to_remove = set()
+    for i, name in enumerate(names):
+        parts = name.split()
+        if len(parts) == 1:
+            first = parts[0].lower()
+            matches = [n for n in names if len(n.split()) > 1 and n.split()[0].lower() == first]
+            if len(matches) == 1:
+                to_remove.add(i)
+    return [name for i, name in enumerate(names) if i not in to_remove]
+
+
 def parse_experimenters(val: Optional[str]) -> list:
     if not val:
         return []
@@ -79,6 +91,30 @@ def parse_experimenters(val: Optional[str]) -> list:
     return result
 
 
+def build_first_name_map(all_names: list) -> dict:
+    unique = list(dict.fromkeys(all_names))
+    result = {}
+    for name in unique:
+        parts = name.split()
+        if len(parts) == 1:
+            first = parts[0].lower()
+            matches = [n for n in unique if len(n.split()) > 1 and n.split()[0].lower() == first]
+            if len(matches) == 1:
+                result[name] = matches[0]
+    return result
+
+
+def apply_first_name_map(names: list, first_name_map: dict) -> list:
+    seen: set = set()
+    result = []
+    for name in names:
+        mapped = first_name_map.get(name, name)
+        if mapped not in seen:
+            seen.add(mapped)
+            result.append(mapped)
+    return result
+
+
 def normalize_experimenters(names: list) -> list:
     seen: set = set()
     result = []
@@ -88,4 +124,4 @@ def normalize_experimenters(names: list) -> list:
             if key not in seen:
                 seen.add(key)
                 result.append(normalized)
-    return result
+    return _resolve_first_names(result)

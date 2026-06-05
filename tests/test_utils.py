@@ -1,6 +1,6 @@
 """Unit tests for zombie_squirrel.utils module."""
 
-from zombie_squirrel.utils import ZS_VERSION, normalize_experimenters, normalize_instrument_id, normalize_name, parse_experimenters
+from zombie_squirrel.utils import ZS_VERSION, apply_first_name_map, build_first_name_map, normalize_experimenters, normalize_instrument_id, normalize_name, parse_experimenters
 
 
 def test_zs_version_is_string():
@@ -91,3 +91,38 @@ def test_normalize_experimenters_skips_none_and_empty():
 
 def test_normalize_experimenters_preserves_insertion_order():
     assert normalize_experimenters(["zoe.smith", "anna.jones"]) == ["Zoe Smith", "Anna Jones"]
+
+def test_normalize_experimenters_merges_first_name_into_full_name():
+    assert normalize_experimenters(["Huy", "Huy Lastname"]) == ["Huy Lastname"]
+
+def test_normalize_experimenters_merges_first_name_order_independent():
+    assert normalize_experimenters(["Huy Lastname", "Huy"]) == ["Huy Lastname"]
+
+def test_normalize_experimenters_keeps_ambiguous_first_name():
+    assert normalize_experimenters(["Huy", "Huy Lastname", "Huy Other"]) == ["Huy", "Huy Lastname", "Huy Other"]
+
+def test_normalize_experimenters_keeps_first_name_with_no_full_name_match():
+    assert normalize_experimenters(["Alice", "Bob Smith"]) == ["Alice", "Bob Smith"]
+
+
+def test_build_first_name_map_unambiguous():
+    assert build_first_name_map(["Huy", "Huy Lastname", "Alice Smith"]) == {"Huy": "Huy Lastname"}
+
+def test_build_first_name_map_ambiguous():
+    assert build_first_name_map(["Huy", "Huy Lastname", "Huy Other"]) == {}
+
+def test_build_first_name_map_no_singles():
+    assert build_first_name_map(["Alice Smith", "Bob Jones"]) == {}
+
+def test_build_first_name_map_empty():
+    assert build_first_name_map([]) == {}
+
+
+def test_apply_first_name_map_replaces():
+    assert apply_first_name_map(["Huy", "Alice Smith"], {"Huy": "Huy Lastname"}) == ["Huy Lastname", "Alice Smith"]
+
+def test_apply_first_name_map_deduplicates():
+    assert apply_first_name_map(["Huy", "Huy Lastname"], {"Huy": "Huy Lastname"}) == ["Huy Lastname"]
+
+def test_apply_first_name_map_no_match():
+    assert apply_first_name_map(["Alice", "Bob Smith"], {}) == ["Alice", "Bob Smith"]

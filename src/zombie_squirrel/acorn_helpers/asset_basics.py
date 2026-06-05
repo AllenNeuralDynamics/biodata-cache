@@ -9,6 +9,8 @@ import zombie_squirrel.acorns as acorns
 from zombie_squirrel.squirrel import Column
 from zombie_squirrel.utils import (
     SquirrelMessage,
+    apply_first_name_map,
+    build_first_name_map,
     normalize_experimenters,
     normalize_instrument_id,
     setup_logging,
@@ -199,6 +201,27 @@ def asset_basics(force_update: bool = False) -> pd.DataFrame:
         # Combine new records with the old df and store in cache
         new_df = pd.DataFrame(records)
         df = pd.concat([df[~df["_id"].isin(keep_ids)], new_df], ignore_index=True)
+
+        def _iter_names(cell):
+            """Helper to iterate over names in a cell that may be a list or a single string."""
+            if hasattr(cell, "__iter__") and not isinstance(cell, str):
+                return list(cell)
+            return []
+
+        all_names = [
+            name
+            for col in ("experimenters_normalized", "investigators_normalized")
+            for cell in df[col]
+            for name in _iter_names(cell)
+        ]
+        first_name_map = build_first_name_map(list(dict.fromkeys(all_names)))
+        if first_name_map:
+            df["experimenters_normalized"] = df["experimenters_normalized"].apply(
+                lambda x: apply_first_name_map(_iter_names(x), first_name_map)
+            )
+            df["investigators_normalized"] = df["investigators_normalized"].apply(
+                lambda x: apply_first_name_map(_iter_names(x), first_name_map)
+            )
 
         acorns.TREE.hide(acorns.NAMES["basics"], df)
 
