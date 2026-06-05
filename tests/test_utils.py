@@ -1,28 +1,11 @@
 """Unit tests for zombie_squirrel.utils module."""
 
-from zombie_squirrel.utils import get_s3_cache_path, normalize_experimenters, normalize_instrument_id, normalize_name, parse_experimenters, prefix_table_name
+from zombie_squirrel.utils import ZS_VERSION, normalize_experimenters, normalize_instrument_id, normalize_name, parse_experimenters
 
 
-def test_prefix_table_name_basic():
-    assert prefix_table_name("my_table") == "zs_my_table.pqt"
-
-def test_prefix_table_name_empty_string():
-    assert prefix_table_name("") == "zs_.pqt"
-
-def test_prefix_table_name_single_char():
-    assert prefix_table_name("a") == "zs_a.pqt"
-
-def test_prefix_table_name_with_underscores():
-    assert prefix_table_name("my_long_table_name") == "zs_my_long_table_name.pqt"
-
-def test_prefix_table_name_with_numbers():
-    assert prefix_table_name("table123") == "zs_table123.pqt"
-
-def test_get_s3_cache_path_basic():
-    assert get_s3_cache_path("zs_test.pqt") == "data-asset-cache/zs_test.pqt"
-
-def test_get_s3_cache_path_various_names():
-    assert get_s3_cache_path("zs_my_data.pqt") == "data-asset-cache/zs_my_data.pqt"
+def test_zs_version_is_string():
+    assert isinstance(ZS_VERSION, str)
+    assert len(ZS_VERSION) > 0
 
 
 def test_normalize_instrument_id_underscore_separator():
@@ -92,10 +75,10 @@ def test_parse_experimenters_whitespace_only():
 
 
 def test_normalize_experimenters_list_of_names():
-    assert normalize_experimenters(["nick.ponvert", "anna.katelyn.mcdougal"]) == ["Anna Katelyn Mcdougal", "Nick Ponvert"]
+    assert normalize_experimenters(["nick.ponvert", "anna.katelyn.mcdougal"]) == ["Nick Ponvert", "Anna Katelyn Mcdougal"]
 
 def test_normalize_experimenters_comma_separated_element():
-    assert normalize_experimenters(["nick.ponvert, anna.katelyn.mcdougal"]) == ["Anna Katelyn Mcdougal", "Nick Ponvert"]
+    assert normalize_experimenters(["nick.ponvert, anna.katelyn.mcdougal"]) == ["Nick Ponvert", "Anna Katelyn Mcdougal"]
 
 def test_normalize_experimenters_deduplicates_across_elements():
     assert normalize_experimenters(["john.doe", "John Doe", "john.doe"]) == ["John Doe"]
@@ -106,5 +89,5 @@ def test_normalize_experimenters_empty_list():
 def test_normalize_experimenters_skips_none_and_empty():
     assert normalize_experimenters([None, "", "nick.ponvert"]) == ["Nick Ponvert"]
 
-def test_normalize_experimenters_sorted():
-    assert normalize_experimenters(["zoe.smith", "anna.jones"]) == ["Anna Jones", "Zoe Smith"]
+def test_normalize_experimenters_preserves_insertion_order():
+    assert normalize_experimenters(["zoe.smith", "anna.jones"]) == ["Zoe Smith", "Anna Jones"]

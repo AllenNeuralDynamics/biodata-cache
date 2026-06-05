@@ -165,11 +165,11 @@ def _build(platform: str) -> pd.DataFrame:
 
     qc_df = pd.DataFrame.from_records(all_rows)
 
-    timestamps = platform_df[["name", "acquisition_start_time"]].rename(
+    meta = platform_df[["name", "acquisition_start_time", "instrument_id_normalized", "experimenters_normalized"]].rename(
         columns={"name": "asset_name", "acquisition_start_time": "timestamp"}
     )
-    result = qc_df.merge(timestamps, on="asset_name", how="left")
-    return result[["asset_name", "tag", "status", "timestamp"]]
+    result = qc_df.merge(meta, on="asset_name", how="left")
+    return result[["asset_name", "tag", "status", "timestamp", "instrument_id_normalized", "experimenters_normalized"]]
 
 
 def platform_qc_columns() -> list[Column]:
@@ -179,4 +179,6 @@ def platform_qc_columns() -> list[Column]:
         Column(name="tag", description="QC tag key"),
         Column(name="status", description="QC status for this tag"),
         Column(name="timestamp", description="Asset acquisition start time"),
+        Column(name="instrument_id_normalized", description="Normalized short instrument name derived from instrument_id"),
+        Column(name="experimenters_normalized", description="Normalized, deduplicated, sorted list of experimenter display names"),
     ]

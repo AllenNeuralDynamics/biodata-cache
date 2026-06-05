@@ -9,7 +9,16 @@ import boto3
 import duckdb
 import pandas as pd
 
-from zombie_squirrel.utils import SquirrelMessage, get_s3_cache_path, prefix_table_name
+from zombie_squirrel.utils import SquirrelMessage, ZS_VERSION
+
+_CACHE_ROOT = "data-asset-cache"
+_VERSION_FOLDER = f"zs-v{ZS_VERSION}"
+
+HIVE_PARTITION_KEYS = {
+    "qc": "subject_id",
+    "qc_tag_status": "subject_id",
+    "platform_qc": "platform",
+}
 
 
 class Tree(ABC):
@@ -62,15 +71,19 @@ class S3Tree(Tree):
 
     def hide(self, table_name: str, data: pd.DataFrame) -> None:
         """Store DataFrame as parquet file in S3."""
-        filename = prefix_table_name(table_name)
-        s3_key = get_s3_cache_path(filename)
+        if "/" in table_name:
+            base, value = table_name.split("/", 1)
+            partition_key = HIVE_PARTITION_KEYS[base]
+            s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}/{partition_key}={value}/data.pqt"
+            json_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}.json"
+        else:
+            s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{table_name}.pqt"
+            json_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{table_name}.json"
 
-        # Convert DataFrame to parquet bytes
         parquet_buffer = io.BytesIO()
         data.to_parquet(parquet_buffer, index=False)
         parquet_buffer.seek(0)
 
-        # Upload to S3
         self.s3_client.put_object(
             Bucket=self.bucket,
             Key=s3_key,
@@ -83,11 +96,6 @@ class S3Tree(Tree):
         )
 
         metadata = {"columns": data.columns.tolist()}
-        if table_name.startswith("qc/"):
-            json_key = "data-asset-cache/zs_qc.json"
-        else:
-            json_filename = filename.replace(".pqt", ".json")
-            json_key = get_s3_cache_path(json_filename)
         self.s3_client.put_object(
             Bucket=self.bucket,
             Key=json_key,
@@ -106,8 +114,12 @@ class S3Tree(Tree):
 
     def _scurry_single(self, table_name: str) -> pd.DataFrame:
         """Fetch a single table from S3."""
-        filename = prefix_table_name(table_name)
-        s3_key = get_s3_cache_path(filename)
+        if "/" in table_name:
+            base, value = table_name.split("/", 1)
+            partition_key = HIVE_PARTITION_KEYS[base]
+            s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}/{partition_key}={value}/data.pqt"
+        else:
+            s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{table_name}.pqt"
 
         try:
             query = f"""
@@ -133,14 +145,16 @@ class S3Tree(Tree):
     def get_location(self, table_name: str, partitioned: bool = False) -> str:
         """Return the S3 URI for a given table."""
         if partitioned:
-            return f"s3://{self.bucket}/data-asset-cache/zs_{table_name}/"
-        filename = prefix_table_name(table_name)
-        s3_key = get_s3_cache_path(filename)
-        return f"s3://{self.bucket}/{s3_key}"
+            return f"s3://{self.bucket}/{_CACHE_ROOT}/{_VERSION_FOLDER}/{table_name}/"
+        if "/" in table_name:
+            base, value = table_name.split("/", 1)
+            partition_key = HIVE_PARTITION_KEYS[base]
+            return f"s3://{self.bucket}/{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}/{partition_key}={value}/data.pqt"
+        return f"s3://{self.bucket}/{_CACHE_ROOT}/{_VERSION_FOLDER}/{table_name}.pqt"
 
     def plant(self, key: str, data: str) -> None:  # pragma: no cover
-        """Write a JSON string to the zombie-squirrel root in S3."""
-        s3_key = f"data-asset-cache/{key}"
+        """Write a JSON string to the versioned folder in S3 and update the index."""
+        s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{key}"
         self.s3_client.put_object(
             Bucket=self.bucket,
             Key=s3_key,
@@ -152,10 +166,24 @@ class S3Tree(Tree):
                 tree="S3Tree", acorn=key, message=f"Published metadata to s3://{self.bucket}/{s3_key}"
             ).to_json()
         )
+        index_key = f"{_CACHE_ROOT}/zombie-squirrels.json"
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket, Key=index_key)
+            existing = json.loads(response["Body"].read().decode())
+        except Exception:
+            existing = []
+        if _VERSION_FOLDER not in existing:
+            existing.append(_VERSION_FOLDER)
+        self.s3_client.put_object(
+            Bucket=self.bucket,
+            Key=index_key,
+            Body=json.dumps(existing).encode(),
+            ContentType="application/json",
+        )
 
     def fetch(self, key: str) -> str:  # pragma: no cover
-        """Read a JSON string from the zombie-squirrel root in S3."""
-        s3_key = f"data-asset-cache/{key}"
+        """Read a JSON string from the versioned folder in S3."""
+        s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{key}"
         response = self.s3_client.get_object(Bucket=self.bucket, Key=s3_key)
         return response["Body"].read().decode()
 
@@ -165,8 +193,7 @@ class S3Tree(Tree):
         asset_names = []
 
         for tbl_name in table_names:
-            filename = prefix_table_name(tbl_name)
-            s3_key = get_s3_cache_path(filename)
+            s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{tbl_name}.pqt"
             s3_path = f"s3://{self.bucket}/{s3_key}"
             parquet_paths.append(f"'{s3_path}'")
             asset_names.append(tbl_name)
@@ -232,19 +259,27 @@ class MemoryTree(Tree):
     def get_location(self, table_name: str, partitioned: bool = False) -> str:
         """Return the in-memory identifier for a given table."""
         if partitioned:
-            return f"{table_name}/"
-        return prefix_table_name(table_name)
+            return f"{_VERSION_FOLDER}/{table_name}/"
+        if "/" in table_name:
+            base, value = table_name.split("/", 1)
+            partition_key = HIVE_PARTITION_KEYS[base]
+            return f"{_VERSION_FOLDER}/{base}/{partition_key}={value}/data.pqt"
+        return f"{_VERSION_FOLDER}/{table_name}.pqt"
 
     def plant(self, key: str, data: str) -> None:
-        """Store a JSON string in the in-memory JSON store."""
+        """Store a JSON string in the versioned in-memory JSON store and update index."""
         logging.info(
             SquirrelMessage(tree="MemoryTree", acorn=key, message=f"Storing metadata in memory for {key}").to_json()
         )
-        self._json_store[key] = data
+        self._json_store[f"{_VERSION_FOLDER}/{key}"] = data
+        existing = json.loads(self._json_store.get("zombie-squirrels.json", "[]"))
+        if _VERSION_FOLDER not in existing:
+            existing.append(_VERSION_FOLDER)
+        self._json_store["zombie-squirrels.json"] = json.dumps(existing)
 
     def fetch(self, key: str) -> str:
-        """Read a JSON string from the in-memory JSON store."""
-        return self._json_store.get(key, "{}")
+        """Read a JSON string from the versioned in-memory JSON store."""
+        return self._json_store.get(f"{_VERSION_FOLDER}/{key}", "{}")
 
     def _scurry_multiple(self, table_names: list[str]) -> pd.DataFrame:
         """Fetch and merge multiple tables from memory."""

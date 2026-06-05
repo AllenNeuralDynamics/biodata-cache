@@ -30,13 +30,13 @@ def test_qc_lazy_with_force_update(mock_client_class):
     }]
     path = qc("test-subject", force_update=True, lazy=True)
     assert isinstance(path, str)
-    assert "qc/test-subject" in path
+    assert "qc/subject_id=test-subject" in path
 
 
 def test_qc_lazy_without_force_update():
     path = qc("test-subject", force_update=False, lazy=True)
     assert isinstance(path, str)
-    assert "qc/test-subject" in path
+    assert "qc/subject_id=test-subject" in path
 
 
 @patch("zombie_squirrel.acorn_helpers.qc.MetadataDbClient")

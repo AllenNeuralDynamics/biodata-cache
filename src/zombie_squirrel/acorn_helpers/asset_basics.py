@@ -131,7 +131,6 @@ def asset_basics(force_update: bool = False) -> pd.DataFrame:
         for record in asset_records:
             modalities = record.get("data_description", {}).get("modalities", [])
             modality_abbreviations = [modality["abbreviation"] for modality in modalities if "abbreviation" in modality]
-            modality_abbreviations_str = ", ".join(modality_abbreviations)
 
             # Get the process date, convert to YYYY-MM-DD if present
             data_processes = record.get("processing", {}).get("data_processes", [])
@@ -169,7 +168,7 @@ def asset_basics(force_update: bool = False) -> pd.DataFrame:
             flat_record = {
                 "_id": record["_id"],
                 "_last_modified": record.get("_last_modified", None),
-                "modalities": modality_abbreviations_str,
+                "modalities": modality_abbreviations,
                 "project_name": record.get("data_description", {}).get("project_name", None),
                 "data_level": record.get("data_description", {}).get("data_level", None),
                 "subject_id": record.get("subject", {}).get("subject_id", None),
@@ -182,18 +181,18 @@ def asset_basics(force_update: bool = False) -> pd.DataFrame:
                 "acquisition_type": record.get("acquisition", {}).get("acquisition_type", None),
                 "location": record.get("location", None),
                 "name": record.get("name", None),
-                "experimenters": ", ".join(
+                "experimenters": [
                     e if isinstance(e, str) else e.get("name", "")
                     for e in (record.get("acquisition", {}).get("experimenters", []) or [])
-                ),
+                ],
                 "experimenters_normalized": normalize_experimenters(
                     [e if isinstance(e, str) else e.get("name", "") for e in (record.get("acquisition", {}).get("experimenters", []) or [])]
                 ),
                 "instrument_id": record.get("acquisition", {}).get("instrument_id", None),
                 "instrument_id_normalized": normalize_instrument_id(record.get("acquisition", {}).get("instrument_id", None)),
-                "investigators": ", ".join(
+                "investigators": [
                     i.get("name", "") for i in (record.get("data_description", {}).get("investigators", []) or [])
-                ),
+                ],
                 "investigators_normalized": normalize_experimenters(
                     [i.get("name", "") for i in (record.get("data_description", {}).get("investigators", []) or [])]
                 ),
@@ -214,7 +213,7 @@ def asset_basics_columns() -> list[Column]:
     return [
         Column(name="_id", description="DocDB record ID for the asset"),
         Column(name="_last_modified", description="DocDB last modified timestamp for the asset record"),
-        Column(name="modalities", description="Modalities present in the asset, comma-separated if multiple"),
+        Column(name="modalities", description="Modalities present in the asset as a list of abbreviations"),
         Column(name="project_name", description="Project name associated with the asset"),
         Column(name="data_level", description="Data level of the asset (e.g. raw, derived)"),
         Column(name="subject_id", description="Subject ID"),
@@ -230,10 +229,10 @@ def asset_basics_columns() -> list[Column]:
         Column(name="acquisition_type", description="Acquisition type (e.g. multiplane-2photon)"),
         Column(name="location", description="Location of the asset in S3"),
         Column(name="name", description="Asset name"),
-        Column(name="experimenters", description="Acquisition experimenters, comma-separated if multiple"),
-        Column(name="experimenters_normalized", description="Normalized, deduplicated, sorted list of experimenter display names"),
+        Column(name="experimenters", description="Acquisition experimenters as a list of raw names"),
+        Column(name="experimenters_normalized", description="Normalized, deduplicated list of experimenter display names in original order"),
         Column(name="instrument_id", description="Instrument ID used for the acquisition"),
         Column(name="instrument_id_normalized", description="Normalized short instrument name derived from instrument_id"),
-        Column(name="investigators", description="Investigators from data_description, comma-separated if multiple"),
-        Column(name="investigators_normalized", description="Normalized, deduplicated, sorted list of investigator display names"),
+        Column(name="investigators", description="Investigators from data_description as a list of names"),
+        Column(name="investigators_normalized", description="Normalized, deduplicated list of investigator display names in original order"),
     ]

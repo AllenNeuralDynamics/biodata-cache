@@ -2,9 +2,16 @@
 
 import logging
 import re
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from typing import Optional
 
 from pydantic import BaseModel
+
+try:
+    ZS_VERSION = _pkg_version("zombie-squirrel")
+except _PackageNotFoundError:
+    ZS_VERSION = "unknown"
 
 
 class SquirrelMessage(BaseModel):
@@ -26,32 +33,6 @@ def setup_logging():
     Safe to call multiple times - uses force=True to reconfigure.
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", force=True)
-
-
-def prefix_table_name(table_name: str) -> str:
-    """Add zombie-squirrel prefix and parquet extension to filenames.
-
-    Args:
-        table_name: The base table name.
-
-    Returns:
-        Filename with 'zs_' prefix and '.pqt' extension.
-
-    """
-    return "zs_" + table_name + ".pqt"
-
-
-def get_s3_cache_path(filename: str) -> str:
-    """Get the full S3 path for a cache file.
-
-    Args:
-        filename: The cache filename (e.g., "zs_unique_project_names.pqt").
-
-    Returns:
-        Full S3 path: data-asset-cache/filename
-
-    """
-    return f"data-asset-cache/{filename}"
 
 
 def get_squirrel_info():
@@ -112,4 +93,4 @@ def normalize_experimenters(names: list) -> list:
             if key not in seen:
                 seen.add(key)
                 result.append(normalized)
-    return sorted(result)
+    return result

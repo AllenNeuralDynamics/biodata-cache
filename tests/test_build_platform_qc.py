@@ -26,7 +26,9 @@ def basics_df():
         "subject_id": ["subj1", "subj1", "subj2", "subj3"],
         "modalities": ["SPIM", "SPIM", "fib", "behavior, behavior-videos"],
         "instrument_id": ["rig_a", "rig_b", None, "rig_c"],
+        "instrument_id_normalized": ["rig-a", "rig-b", None, "rig-c"],
         "experimenters": ["Alice, Bob", "Charlie", None, "Dave"],
+        "experimenters_normalized": ["Alice Bob", "Charlie", None, "Dave"],
         "acquisition_start_time": ["2025-06-01T10:00:00", "2025-06-02T10:00:00", "2025-06-03T10:00:00", "2025-06-04T10:00:00"],
         "acquisition_type": [None, None, None, "Uncoupled Baiting"],
     })
@@ -102,6 +104,8 @@ def test_platform_qc_cache_hit():
         "tag": ["type:Alignment"],
         "status": ["Pass"],
         "timestamp": pd.to_datetime(["2025-06-01"]),
+        "instrument_id_normalized": ["rig-a"],
+        "experimenters_normalized": ["Alice Bob"],
     })
     acorns.TREE.hide("platform_qc/spim", cached)
     df = platform_qc("spim", force_update=False)

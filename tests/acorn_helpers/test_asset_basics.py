@@ -51,7 +51,7 @@ def test_asset_basics_cache_miss(mock_tree, mock_client_class):
     result = asset_basics(force_update=True)
     assert len(result) == 1
     assert result.iloc[0]["_id"] == "id1"
-    assert result.iloc[0]["modalities"] == "img"
+    assert result.iloc[0]["modalities"] == ["img"]
     assert result.iloc[0]["project_name"] == "proj1"
 
 
@@ -190,7 +190,7 @@ def test_acquisition_type_stored(mock_tree, mock_client_class):
 
 @patch("zombie_squirrel.acorn_helpers.asset_basics.MetadataDbClient")
 @patch("zombie_squirrel.acorn_helpers.asset_basics.acorns.TREE")
-def test_experimenters_stored_as_comma_separated(mock_tree, mock_client_class):
+def test_experimenters_stored_as_list(mock_tree, mock_client_class):
     mock_tree.scurry.return_value = pd.DataFrame()
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -200,12 +200,12 @@ def test_experimenters_stored_as_comma_separated(mock_tree, mock_client_class):
         "acquisition": {"experimenters": ["huy.nguyen", "jane.doe"]},
     }]
     result = asset_basics(force_update=True)
-    assert result.iloc[0]["experimenters"] == "huy.nguyen, jane.doe"
+    assert result.iloc[0]["experimenters"] == ["huy.nguyen", "jane.doe"]
 
 
 @patch("zombie_squirrel.acorn_helpers.asset_basics.MetadataDbClient")
 @patch("zombie_squirrel.acorn_helpers.asset_basics.acorns.TREE")
-def test_experimenters_stored_as_comma_separated_dicts(mock_tree, mock_client_class):
+def test_experimenters_stored_as_list_dicts(mock_tree, mock_client_class):
     mock_tree.scurry.return_value = pd.DataFrame()
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -215,7 +215,7 @@ def test_experimenters_stored_as_comma_separated_dicts(mock_tree, mock_client_cl
         "acquisition": {"experimenters": [{"name": "Jane Doe", "object_type": "Person"}, {"name": "John Smith", "object_type": "Person"}]},
     }]
     result = asset_basics(force_update=True)
-    assert result.iloc[0]["experimenters"] == "Jane Doe, John Smith"
+    assert result.iloc[0]["experimenters"] == ["Jane Doe", "John Smith"]
 
 
 @patch("zombie_squirrel.acorn_helpers.asset_basics.MetadataDbClient")
@@ -230,7 +230,7 @@ def test_experimenters_empty_when_missing(mock_tree, mock_client_class):
         "acquisition": {},
     }]
     result = asset_basics(force_update=True)
-    assert result.iloc[0]["experimenters"] == ""
+    assert result.iloc[0]["experimenters"] == []
 
 
 @patch("zombie_squirrel.acorn_helpers.asset_basics.MetadataDbClient")

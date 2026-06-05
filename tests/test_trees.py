@@ -6,6 +6,9 @@ import pandas as pd
 import pytest
 
 from zombie_squirrel.forest import MemoryTree, S3Tree, Tree
+from zombie_squirrel.utils import ZS_VERSION
+
+_VF = f"zs-v{ZS_VERSION}"
 
 
 # --- Tree abstract class ---
@@ -108,11 +111,11 @@ def test_s3_hide(mock_boto3_client):
     assert mock_s3_client.put_object.call_count == 2
     parquet_call = mock_s3_client.put_object.call_args_list[0][1]
     assert parquet_call["Bucket"] == "allen-data-views"
-    assert parquet_call["Key"] == "data-asset-cache/zs_test_table.pqt"
+    assert parquet_call["Key"] == f"data-asset-cache/{_VF}/test_table.pqt"
     assert isinstance(parquet_call["Body"], bytes)
     json_call = mock_s3_client.put_object.call_args_list[1][1]
     assert json_call["Bucket"] == "allen-data-views"
-    assert json_call["Key"] == "data-asset-cache/zs_test_table.json"
+    assert json_call["Key"] == f"data-asset-cache/{_VF}/test_table.json"
     assert "columns" in json_call["Body"]
 
 @patch("zombie_squirrel.forest.boto3.client")
@@ -122,11 +125,24 @@ def test_s3_hide_qc_metadata(mock_boto3_client):
     acorn = S3Tree()
     acorn.hide("qc/subject123", pd.DataFrame({"metric": ["value1", "value2"]}))
     assert mock_s3_client.put_object.call_count == 2
+    parquet_call = mock_s3_client.put_object.call_args_list[0][1]
+    assert parquet_call["Key"] == f"data-asset-cache/{_VF}/qc/subject_id=subject123/data.pqt"
     json_call = mock_s3_client.put_object.call_args_list[1][1]
     assert json_call["Bucket"] == "allen-data-views"
-    assert json_call["Key"] == "data-asset-cache/zs_qc.json"
+    assert json_call["Key"] == f"data-asset-cache/{_VF}/qc.json"
     assert "columns" in json_call["Body"]
     assert "metric" in json_call["Body"]
+
+@patch("zombie_squirrel.forest.boto3.client")
+def test_s3_hide_platform_qc_metadata(mock_boto3_client):
+    mock_s3_client = MagicMock()
+    mock_boto3_client.return_value = mock_s3_client
+    acorn = S3Tree()
+    acorn.hide("platform_qc/spim", pd.DataFrame({"tag": ["a"]}))
+    parquet_call = mock_s3_client.put_object.call_args_list[0][1]
+    assert parquet_call["Key"] == f"data-asset-cache/{_VF}/platform_qc/platform=spim/data.pqt"
+    json_call = mock_s3_client.put_object.call_args_list[1][1]
+    assert json_call["Key"] == f"data-asset-cache/{_VF}/platform_qc.json"
 
 @patch("zombie_squirrel.forest.duckdb.query")
 @patch("zombie_squirrel.forest.boto3.client")
@@ -139,8 +155,34 @@ def test_s3_scurry(mock_boto3_client, mock_duckdb_query):
     acorn = S3Tree()
     result = acorn.scurry("test_table")
     mock_duckdb_query.assert_called_once()
-    assert "s3://allen-data-views/data-asset-cache/zs_test_table.pqt" in mock_duckdb_query.call_args[0][0]
+    assert f"data-asset-cache/{_VF}/test_table.pqt" in mock_duckdb_query.call_args[0][0]
     pd.testing.assert_frame_equal(result, expected_df)
+
+@patch("zombie_squirrel.forest.duckdb.query")
+@patch("zombie_squirrel.forest.boto3.client")
+def test_s3_scurry_partitioned_table(mock_boto3_client, mock_duckdb_query):
+    mock_boto3_client.return_value = MagicMock()
+    expected_df = pd.DataFrame({"metric": ["a"]})
+    mock_result = MagicMock()
+    mock_result.to_df.return_value = expected_df
+    mock_duckdb_query.return_value = mock_result
+    result = S3Tree().scurry("qc/subject123")
+    assert f"data-asset-cache/{_VF}/qc/subject_id=subject123/data.pqt" in mock_duckdb_query.call_args[0][0]
+    pd.testing.assert_frame_equal(result, expected_df)
+
+@patch("zombie_squirrel.forest.boto3.client")
+def test_s3_get_location_single_partition(mock_boto3_client):
+    mock_boto3_client.return_value = MagicMock()
+    tree = S3Tree()
+    result = tree.get_location("qc/subject123")
+    assert result == f"s3://allen-data-views/data-asset-cache/{_VF}/qc/subject_id=subject123/data.pqt"
+
+@patch("zombie_squirrel.forest.boto3.client")
+def test_s3_get_location_platform_qc_partition(mock_boto3_client):
+    mock_boto3_client.return_value = MagicMock()
+    tree = S3Tree()
+    result = tree.get_location("platform_qc/spim")
+    assert result == f"s3://allen-data-views/data-asset-cache/{_VF}/platform_qc/platform=spim/data.pqt"
 
 @patch("zombie_squirrel.forest.duckdb.query")
 @patch("zombie_squirrel.forest.boto3.client")
