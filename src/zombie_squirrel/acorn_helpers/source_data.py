@@ -38,9 +38,6 @@ def source_data(force_update: bool = False) -> pd.DataFrame:
     """
     df = acorns.TREE.scurry(acorns.NAMES["d2r"])
 
-    if df.empty and not force_update:
-        raise ValueError("Cache is empty. Use force_update=True to fetch data from database.")
-
     if df.empty or force_update:
         setup_logging()
         logging.info(
@@ -84,7 +81,7 @@ def source_data(force_update: bool = False) -> pd.DataFrame:
                     }
                 )
 
-        df = pd.DataFrame(data)
+        df = pd.DataFrame(data, columns=["name", "source_data", "pipeline_name", "processing_time"])
         acorns.TREE.hide(acorns.NAMES["d2r"], df)
 
     return df

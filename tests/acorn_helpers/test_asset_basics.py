@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
-import pytest
 
 from zombie_squirrel.acorn_helpers.asset_basics import asset_basics
 
@@ -28,11 +27,25 @@ def test_asset_basics_cache_hit(mock_tree, mock_client_class):
     mock_client_class.assert_not_called()
 
 
+@patch("zombie_squirrel.acorn_helpers.asset_basics.MetadataDbClient")
 @patch("zombie_squirrel.acorn_helpers.asset_basics.acorns.TREE")
-def test_asset_basics_empty_cache_raises_error(mock_tree):
+def test_asset_basics_empty_cache_fetches_from_db(mock_tree, mock_client_class):
     mock_tree.scurry.return_value = pd.DataFrame()
-    with pytest.raises(ValueError, match="Cache is empty"):
-        asset_basics(force_update=False)
+    mock_client_instance = MagicMock()
+    mock_client_class.return_value = mock_client_instance
+    mock_client_instance.retrieve_docdb_records.side_effect = [
+        [{"_id": "id1", "_last_modified": "2023-01-01"}],
+        [{
+            "_id": "id1",
+            "_last_modified": "2023-01-01",
+            "data_description": {"modalities": [{"abbreviation": "img"}], "project_name": "proj1", "data_level": "raw"},
+            "subject": {"subject_id": "sub001"},
+            "acquisition": {"acquisition_start_time": "2023-01-01T10:00:00", "acquisition_end_time": "2023-01-01T11:00:00"},
+        }],
+    ]
+    result = asset_basics(force_update=False)
+    assert len(result) == 1
+    assert result.iloc[0]["_id"] == "id1"
 
 
 @patch("zombie_squirrel.acorn_helpers.asset_basics.MetadataDbClient")

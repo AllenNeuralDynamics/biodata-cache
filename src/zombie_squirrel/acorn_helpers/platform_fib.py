@@ -154,7 +154,7 @@ def platform_fib(force_update: bool = False) -> pd.DataFrame:
         )
 
         basics = asset_basics()
-        fib_assets = basics[basics["modalities"].str.contains("fib", case=False, na=False)]
+        fib_assets = basics[basics["modalities"].apply(lambda x: x is not None and not isinstance(x, float) and any("fib" in m.lower() for m in x))]
         fib_names = list(fib_assets["name"].dropna())
 
         logging.info(

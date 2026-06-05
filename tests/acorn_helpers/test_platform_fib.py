@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -324,7 +325,7 @@ def test_platform_fib_cache_hit(mock_tree):
 @patch("zombie_squirrel.acorn_helpers.platform_fib.acorns.TREE")
 def test_platform_fib_force_update(mock_tree, mock_basics, mock_client_class):
     mock_tree.scurry.return_value = pd.DataFrame()
-    mock_basics.return_value = pd.DataFrame({"name": ["test_asset_001"], "modalities": ["fib"]})
+    mock_basics.return_value = pd.DataFrame({"name": ["test_asset_001"], "modalities": [np.array(["fib"])]})
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
     mock_client.retrieve_docdb_records.return_value = [SYNTHETIC_RECORD]
@@ -339,7 +340,7 @@ def test_platform_fib_force_update(mock_tree, mock_basics, mock_client_class):
 def test_platform_fib_filters_fib_modality(mock_tree, mock_basics, mock_client_class):
     mock_tree.scurry.return_value = pd.DataFrame()
     mock_basics.return_value = pd.DataFrame(
-        {"name": ["fib_asset", "spim_asset"], "modalities": ["fib", "SPIM"]}
+        {"name": ["fib_asset", "spim_asset"], "modalities": [np.array(["fib"]), np.array(["SPIM"])]}
     )
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client

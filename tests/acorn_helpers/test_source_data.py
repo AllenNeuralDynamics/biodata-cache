@@ -5,7 +5,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
-import pytest
 
 from zombie_squirrel.acorn_helpers.source_data import source_data
 
@@ -26,11 +25,16 @@ def test_source_data_cache_hit(mock_tree, mock_client_class):
     mock_client_class.assert_not_called()
 
 
+@patch("zombie_squirrel.acorn_helpers.source_data.MetadataDbClient")
 @patch("zombie_squirrel.acorn_helpers.source_data.acorns.TREE")
-def test_source_data_empty_cache_raises_error(mock_tree):
+def test_source_data_empty_cache_fetches_from_db(mock_tree, mock_client_class):
     mock_tree.scurry.return_value = pd.DataFrame()
-    with pytest.raises(ValueError, match="Cache is empty"):
-        source_data(force_update=False)
+    mock_client_instance = MagicMock()
+    mock_client_class.return_value = mock_client_instance
+    mock_client_instance.retrieve_docdb_records.return_value = []
+    result = source_data(force_update=False)
+    assert isinstance(result, pd.DataFrame)
+    mock_client_instance.retrieve_docdb_records.assert_called_once()
 
 
 @patch("zombie_squirrel.acorn_helpers.source_data.MetadataDbClient")

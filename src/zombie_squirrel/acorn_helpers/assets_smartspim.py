@@ -192,7 +192,7 @@ def assets_smartspim(force_update: bool = False) -> pd.DataFrame:
 
         basics = asset_basics()
         raw_spim = basics[
-            (basics["data_level"] == "raw") & (basics["modalities"].str.contains("SPIM", na=False))
+            (basics["data_level"] == "raw") & basics["modalities"].apply(lambda x: x is not None and not isinstance(x, float) and any("SPIM" in m for m in x))
         ]
         raw_spim_names = list(raw_spim["name"].dropna())
 

@@ -4,6 +4,7 @@ import json
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -245,7 +246,7 @@ def test_empty_cache_raises_without_force_update(mock_tree):
 @patch("zombie_squirrel.acorn_helpers.assets_smartspim.acorns.TREE")
 def test_force_update_builds_and_caches(mock_tree, mock_asset_basics, mock_source_data, mock_fetch_meta, mock_build_rows, mock_raw_ng_link):
     mock_tree.scurry.return_value = pd.DataFrame()
-    mock_asset_basics.return_value = pd.DataFrame({"data_level": ["raw"], "modalities": ["SPIM"], "name": [RAW_NAME]})
+    mock_asset_basics.return_value = pd.DataFrame({"data_level": ["raw"], "modalities": [np.array(["SPIM"])], "name": [RAW_NAME]})
     mock_source_data.return_value = pd.DataFrame({
         "name": [STITCHED_NAME],
         "source_data": [RAW_NAME],
@@ -265,7 +266,7 @@ def test_force_update_builds_and_caches(mock_tree, mock_asset_basics, mock_sourc
 @patch("zombie_squirrel.acorn_helpers.assets_smartspim.acorns.TREE")
 def test_unprocessed_assets_included_with_processed_false(mock_tree, mock_asset_basics, mock_source_data, mock_raw_ng_link):
     mock_tree.scurry.return_value = pd.DataFrame()
-    mock_asset_basics.return_value = pd.DataFrame({"data_level": ["raw"], "modalities": ["SPIM"], "name": [RAW_NAME]})
+    mock_asset_basics.return_value = pd.DataFrame({"data_level": ["raw"], "modalities": [np.array(["SPIM"])], "name": [RAW_NAME]})
     mock_source_data.return_value = pd.DataFrame({
         "name": [f"{RAW_NAME}_processed_2026-01-02_00-00-00"],
         "source_data": [RAW_NAME],
@@ -289,7 +290,7 @@ def test_filters_only_raw_spim_assets(mock_tree, mock_asset_basics, mock_source_
     mock_tree.scurry.return_value = pd.DataFrame()
     mock_asset_basics.return_value = pd.DataFrame({
         "data_level": ["raw", "raw", "derived"],
-        "modalities": ["SPIM", "ECEPHYS", "SPIM"],
+        "modalities": [np.array(["SPIM"]), np.array(["ECEPHYS"]), np.array(["SPIM"])],
         "name": ["spim_raw", "ecephys_raw", "spim_derived"],
     })
     mock_source_data.return_value = pd.DataFrame({
@@ -315,3 +316,35 @@ def test_returns_expected_columns():
         "name", "raw_name", "processed", "institution", "processing_end_time",
         "stitched_link", "raw_link", "channel", "segmentation_link", "quantification_link", "alignment_link",
     ]
+
+
+@patch("zombie_squirrel.acorn_helpers.assets_smartspim._fetch_raw_ng_link")
+@patch("zombie_squirrel.acorn_helpers.assets_smartspim._fetch_asset_metadata")
+@patch("zombie_squirrel.acorn_helpers.source_data.MetadataDbClient")
+@patch("zombie_squirrel.acorn_helpers.asset_basics.MetadataDbClient")
+@patch("zombie_squirrel.acorn_helpers.assets_smartspim.acorns.TREE")
+def test_force_update_cold_dependency_cache(
+    mock_tree, mock_basics_client, mock_sd_client, mock_fetch_meta, mock_raw_ng_link
+):
+    mock_tree.scurry.return_value = pd.DataFrame()
+    mock_basics_instance = MagicMock()
+    mock_basics_client.return_value = mock_basics_instance
+    mock_basics_instance.retrieve_docdb_records.side_effect = [
+        [{"_id": "spim1", "_last_modified": "2026-01-01"}],
+        [{
+            "_id": "spim1",
+            "_last_modified": "2026-01-01",
+            "name": RAW_NAME,
+            "data_description": {"modalities": [{"abbreviation": "SPIM"}], "data_level": "raw"},
+        }],
+    ]
+    mock_sd_instance = MagicMock()
+    mock_sd_client.return_value = mock_sd_instance
+    mock_sd_instance.retrieve_docdb_records.return_value = []
+    mock_fetch_meta.return_value = {}
+    mock_raw_ng_link.return_value = None
+    result = assets_smartspim(force_update=True)
+    assert isinstance(result, pd.DataFrame)
+    hide_names = [call[0][0] for call in mock_tree.hide.call_args_list]
+    import zombie_squirrel.acorns as acorns
+    assert acorns.NAMES["smartspim"] in hide_names

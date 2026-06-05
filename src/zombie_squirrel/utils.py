@@ -2,16 +2,11 @@
 
 import logging
 import re
-from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
-from importlib.metadata import version as _pkg_version
 from typing import Optional
 
 from pydantic import BaseModel
 
-try:
-    ZS_VERSION = _pkg_version("zombie-squirrel")
-except _PackageNotFoundError:
-    ZS_VERSION = "unknown"
+from zombie_squirrel import __version__ as ZS_VERSION
 
 
 class SquirrelMessage(BaseModel):
