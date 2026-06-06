@@ -27,9 +27,6 @@ def metadata_upgrade(force_update: bool = False) -> pd.DataFrame:
     """
     df = acorns.TREE.scurry("metadata_upgrade")
 
-    if df.empty and not force_update:
-        raise ValueError("Cache is empty. Use force_update=True to fetch data.")
-
     if df.empty or force_update:
         setup_logging()
         logging.info(
