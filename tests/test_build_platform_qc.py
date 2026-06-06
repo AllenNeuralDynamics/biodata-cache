@@ -24,7 +24,7 @@ def basics_df():
     return pd.DataFrame({
         "name": ["spim_asset_1", "spim_asset_2", "fib_asset_1", "behavior_asset_1"],
         "subject_id": ["subj1", "subj1", "subj2", "subj3"],
-        "modalities": ["SPIM", "SPIM", "fib", "behavior, behavior-videos"],
+        "modalities": [["SPIM"], ["SPIM"], ["fib"], ["behavior", "behavior-videos"]],
         "instrument_id": ["rig_a", "rig_b", None, "rig_c"],
         "instrument_id_normalized": ["rig-a", "rig-b", None, "rig-c"],
         "experimenters": ["Alice, Bob", "Charlie", None, "Dave"],

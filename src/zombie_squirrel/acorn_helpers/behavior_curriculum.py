@@ -80,7 +80,7 @@ def behavior_curriculum(force_update: bool = False) -> pd.DataFrame:
         raise ValueError("Cache is empty. Use force_update=True to fetch data from S3.")
 
     basics = asset_basics()
-    behavior_assets = basics[basics["modalities"].str.contains("behavior", case=False, na=False)]
+    behavior_assets = basics[basics["modalities"].apply(lambda x: x is not None and not isinstance(x, float) and any("behavior" in m.lower() for m in x))]
 
     # Rows with curriculum data but no stage_node_id are from before this column was added — reprocess them.
     if not df.empty and "stage_node_id" not in df.columns:

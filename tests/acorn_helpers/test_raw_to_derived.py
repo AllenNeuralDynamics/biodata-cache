@@ -65,8 +65,8 @@ def test_modality_filters_by_modality(mock_source_data, mock_asset_basics):
         ("derived_behavior_2026-01-01_00-00-00", "raw_x", "pipeline_b", "2026-01-01_00-00-00"),
     ])
     mock_asset_basics.return_value = pd.DataFrame([
-        {"name": "derived_ecephys_2026-01-01_00-00-00", "modalities": "ecephys"},
-        {"name": "derived_behavior_2026-01-01_00-00-00", "modalities": "behavior"},
+        {"name": "derived_ecephys_2026-01-01_00-00-00", "modalities": ["ecephys"]},
+        {"name": "derived_behavior_2026-01-01_00-00-00", "modalities": ["behavior"]},
     ])
     assert raw_to_derived("raw_x", modality="ecephys") == ["derived_ecephys_2026-01-01_00-00-00"]
 
@@ -80,9 +80,9 @@ def test_modality_latest_returns_most_recent_for_modality(mock_source_data, mock
         ("derived_behavior_2026-01-04_00-00-00", "raw_x", "pipeline_a", "2026-01-04_00-00-00"),
     ])
     mock_asset_basics.return_value = pd.DataFrame([
-        {"name": "derived_ecephys_old_2026-01-01_00-00-00", "modalities": "ecephys"},
-        {"name": "derived_ecephys_new_2026-01-03_00-00-00", "modalities": "ecephys"},
-        {"name": "derived_behavior_2026-01-04_00-00-00", "modalities": "behavior"},
+        {"name": "derived_ecephys_old_2026-01-01_00-00-00", "modalities": ["ecephys"]},
+        {"name": "derived_ecephys_new_2026-01-03_00-00-00", "modalities": ["ecephys"]},
+        {"name": "derived_behavior_2026-01-04_00-00-00", "modalities": ["behavior"]},
     ])
     result = raw_to_derived("raw_x", latest=True, modality="ecephys")
     assert result == ["derived_ecephys_new_2026-01-03_00-00-00"]
@@ -94,5 +94,5 @@ def test_modality_latest_returns_most_recent_for_modality(mock_source_data, mock
 @patch("zombie_squirrel.acorn_helpers.raw_to_derived.source_data")
 def test_modality_no_match_returns_empty(mock_source_data, mock_asset_basics):
     mock_source_data.return_value = _make_df([("derived_behavior_2026-01-01_00-00-00", "raw_x", "pipeline_a", "2026-01-01_00-00-00")])
-    mock_asset_basics.return_value = pd.DataFrame([{"name": "derived_behavior_2026-01-01_00-00-00", "modalities": "behavior"}])
+    mock_asset_basics.return_value = pd.DataFrame([{"name": "derived_behavior_2026-01-01_00-00-00", "modalities": ["behavior"]}])
     assert raw_to_derived("raw_x", modality="ecephys") == []

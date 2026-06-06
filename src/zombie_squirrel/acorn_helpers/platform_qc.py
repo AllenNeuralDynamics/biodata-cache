@@ -32,8 +32,10 @@ PLATFORMS = list(PLATFORM_FILTERS.keys())
 def _filter_basics_pandas(df: pd.DataFrame, platform: str) -> pd.DataFrame:
     """Filter asset_basics DataFrame to rows matching the given platform."""
     cfg = PLATFORM_FILTERS[platform]
-    modality_pattern = "|".join(cfg["qc_modalities"])
-    mask = df["modalities"].str.contains(modality_pattern, case=False, na=False)
+    target_mods = {m.lower() for m in cfg["qc_modalities"]}
+    mask = df["modalities"].apply(
+        lambda x: x is not None and not isinstance(x, float) and any(m.lower() in target_mods for m in x)
+    )
     if "acquisition_type" in cfg:
         mask = mask & (df["acquisition_type"] == cfg["acquisition_type"])
     if "acquisition_type_regex" in cfg:

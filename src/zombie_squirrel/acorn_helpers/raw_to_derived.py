@@ -24,7 +24,7 @@ def raw_to_derived(
     matches = df[df["source_data"] == asset_name].copy()
     if modality is not None:
         basics = asset_basics()
-        modality_names = basics[basics["modalities"].str.contains(modality, na=False)]["name"]
+        modality_names = basics[basics["modalities"].apply(lambda x: x is not None and not isinstance(x, float) and any(modality.lower() in m.lower() for m in x))]["name"]
         matches = matches[matches["name"].isin(modality_names)]
     if latest and not matches.empty:
         matches = (
