@@ -9,7 +9,14 @@ available acorns and their metadata.
 __version__ = "0.29.0"
 
 from zombie_squirrel.acorn_helpers.asset_basics import asset_basics  # noqa: F401
-from zombie_squirrel.acorn_helpers.foraging_sessions import foraging_sessions  # noqa: F401
+from zombie_squirrel.acorn_helpers.foraging.session import foraging_session  # noqa: F401
+from zombie_squirrel.acorn_helpers.foraging.query import (  # noqa: F401
+    select_sessions,
+    fetch_trials,
+    fetch_events,
+    read_trials,
+    read_events,
+)
 from zombie_squirrel.acorn_helpers.assets_smartspim import assets_smartspim  # noqa: F401
 from zombie_squirrel.acorn_helpers.behavior_curriculum import behavior_curriculum  # noqa: F401
 from zombie_squirrel.acorn_helpers.platform_fib import platform_fib  # noqa: F401

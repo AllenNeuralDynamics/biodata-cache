@@ -21,6 +21,13 @@ HIVE_PARTITION_KEYS = {
 }
 
 
+def _is_hive_partition(table_name: str) -> bool:
+    """Return True only if table_name is a partitioned write (base in HIVE_PARTITION_KEYS)."""
+    if "/" not in table_name:
+        return False
+    return table_name.split("/")[0] in HIVE_PARTITION_KEYS
+
+
 class Tree(ABC):
     """Base class for a storage backend (the cache)."""
 
@@ -71,7 +78,7 @@ class S3Tree(Tree):
 
     def hide(self, table_name: str, data: pd.DataFrame) -> None:
         """Store DataFrame as parquet file in S3."""
-        if "/" in table_name:
+        if _is_hive_partition(table_name):
             base, value = table_name.split("/", 1)
             partition_key = HIVE_PARTITION_KEYS[base]
             s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}/{partition_key}={value}/data.pqt"
@@ -114,7 +121,7 @@ class S3Tree(Tree):
 
     def _scurry_single(self, table_name: str) -> pd.DataFrame:
         """Fetch a single table from S3."""
-        if "/" in table_name:
+        if _is_hive_partition(table_name):
             base, value = table_name.split("/", 1)
             partition_key = HIVE_PARTITION_KEYS[base]
             s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}/{partition_key}={value}/data.pqt"
@@ -146,7 +153,7 @@ class S3Tree(Tree):
         """Return the S3 URI for a given table."""
         if partitioned:
             return f"s3://{self.bucket}/{_CACHE_ROOT}/{_VERSION_FOLDER}/{table_name}/"
-        if "/" in table_name:
+        if _is_hive_partition(table_name):
             base, value = table_name.split("/", 1)
             partition_key = HIVE_PARTITION_KEYS[base]
             return f"s3://{self.bucket}/{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}/{partition_key}={value}/data.pqt"
@@ -260,7 +267,7 @@ class MemoryTree(Tree):
         """Return the in-memory identifier for a given table."""
         if partitioned:
             return f"{_VERSION_FOLDER}/{table_name}/"
-        if "/" in table_name:
+        if _is_hive_partition(table_name):
             base, value = table_name.split("/", 1)
             partition_key = HIVE_PARTITION_KEYS[base]
             return f"{_VERSION_FOLDER}/{base}/{partition_key}={value}/data.pqt"

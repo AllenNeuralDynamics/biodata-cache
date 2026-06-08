@@ -21,7 +21,7 @@ def _make_registry(mock_upn, mock_usi, mock_ugt, mock_basics, mock_d2r, mock_r2d
         "assets_smartspim": mock_smartspim,
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
-        "foraging_sessions": MagicMock(),
+        "foraging_session": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
     }
@@ -204,7 +204,7 @@ def test_hide_acorns_calls_all_acorns(mock_registry, mock_tree):
         "assets_smartspim": mock_smartspim,
         "metadata_upgrade": MagicMock(),
         "platform_fib": mock_fib,
-        "foraging_sessions": MagicMock(),
+        "foraging_session": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
     }[x]
@@ -239,7 +239,7 @@ def test_hide_acorns_empty_registry(mock_registry, mock_tree):
         "assets_smartspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
-        "foraging_sessions": MagicMock(),
+        "foraging_session": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
     }[x]
@@ -271,7 +271,7 @@ def test_hide_acorns_single_acorn(mock_registry, mock_tree):
         "assets_smartspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
-        "foraging_sessions": MagicMock(),
+        "foraging_session": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
     }[x]
@@ -298,7 +298,7 @@ def test_hide_acorns_acorn_order_independent(mock_registry, mock_tree):
         "assets_smartspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
-        "foraging_sessions": MagicMock(),
+        "foraging_session": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
     }[x]
@@ -325,7 +325,7 @@ def test_hide_acorns_propagates_exceptions(mock_registry):
         "assets_smartspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
-        "foraging_sessions": MagicMock(),
+        "foraging_session": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
     }[x]

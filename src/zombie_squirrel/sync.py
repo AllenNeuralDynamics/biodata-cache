@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .acorn_helpers.asset_basics import asset_basics_columns
 from .acorn_helpers.assets_smartspim import assets_smartspim_columns
-from .acorn_helpers.foraging_sessions import foraging_sessions_columns
+from .acorn_helpers.foraging.session import foraging_session_columns
 from .acorn_helpers.behavior_curriculum import behavior_curriculum_columns
 from .acorn_helpers.platform_fib import platform_fib_columns
 from .acorn_helpers.platform_qc import platform_qc_columns, PLATFORMS
@@ -100,11 +100,11 @@ def publish_squirrel_metadata() -> None:
         ),
         Acorn(
             name=NAMES["foraging"],
-            description="Foraging behavior sessions with key performance metrics, one row per session",
-            location=TREE.get_location(NAMES["foraging"]),
+            description="Dynamic foraging sessions with full session metrics, one row per session",
+            location=TREE.get_location("foraging/session"),
             partitioned=False,
             type=AcornType.metadata,
-            columns=foraging_sessions_columns(),
+            columns=foraging_session_columns(),
         ),
         Acorn(
             name=NAMES["curriculum"],
@@ -162,7 +162,7 @@ def hide_acorns():
 
     ACORN_REGISTRY[NAMES["smartspim"]](force_update=True)
     ACORN_REGISTRY[NAMES["fib"]](force_update=True)
-    ACORN_REGISTRY[NAMES["foraging"]](force_update=True)
+    ACORN_REGISTRY[NAMES["foraging"]](force_update=True)  # foraging_session
     ACORN_REGISTRY[NAMES["curriculum"]](force_update=True)
 
     for platform in PLATFORMS:

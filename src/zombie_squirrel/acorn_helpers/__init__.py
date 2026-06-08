@@ -3,7 +3,7 @@
 from zombie_squirrel.acorn_helpers import (  # noqa: F401
     asset_basics,
     custom,
-    foraging_sessions,
+    foraging,
     metadata_core,
     platform_qc,
     qc,
