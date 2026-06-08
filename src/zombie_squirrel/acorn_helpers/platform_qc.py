@@ -24,6 +24,9 @@ PLATFORM_FILTERS = {
         "acquisition_type_regex": r"(Uncoupled|Coupled)( Without)? Baiting",
         "qc_modalities": {"behavior", "behavior-videos"},
     },
+    "slap2": {
+        "qc_modalities": {"slap2"},
+    },
 }
 
 PLATFORMS = list(PLATFORM_FILTERS.keys())
