@@ -44,7 +44,7 @@ NAMES = {
     "upgrade": "metadata_upgrade",
     "fib": "platform_fib",
     "core": "metadata_core",
-    "foraging": "foraging_sessions",
+    "foraging": "foraging_session",
     "curriculum": "behavior_curriculum",
     "platform_qc": "platform_qc",
 }

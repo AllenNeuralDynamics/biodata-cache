@@ -33,6 +33,9 @@ def test_hide_acorns_fallback_sequential_on_concurrent_failure(mock_registry, mo
         "assets_smartspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
+        "foraging_session": MagicMock(),
+        "behavior_curriculum": MagicMock(),
+        "platform_qc": MagicMock(),
     }.__getitem__
 
     failed_future = MagicMock()
