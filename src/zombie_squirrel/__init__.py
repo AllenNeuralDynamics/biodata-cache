@@ -6,7 +6,7 @@ Also exposes get_squirrel_info to retrieve the squirrel.json registry of all
 available acorns and their metadata.
 """
 
-__version__ = "0.30.0"
+__version__ = "0.30.1"
 
 from zombie_squirrel.acorn_helpers.asset_basics import asset_basics  # noqa: F401
 from zombie_squirrel.acorn_helpers.foraging_sessions import foraging_sessions  # noqa: F401
