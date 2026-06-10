@@ -194,6 +194,7 @@ def assets_smartspim(force_update: bool = False) -> pd.DataFrame:
         raw_spim = basics[
             (basics["data_level"] == "raw") & basics["modalities"].apply(lambda x: x is not None and not isinstance(x, float) and any("SPIM" in m for m in x))
         ]
+        raw_spim = raw_spim[~raw_spim["instrument_id"].str.contains("exa", case=False, na=False)]
         raw_spim_names = list(raw_spim["name"].dropna())
 
         sd = source_data()
@@ -242,6 +243,76 @@ def assets_smartspim(force_update: bool = False) -> pd.DataFrame:
     return df
 
 
+@acorns.register_acorn(acorns.NAMES["exaspim"])
+def platform_exaspim(force_update: bool = False) -> pd.DataFrame:
+    df = acorns.TREE.scurry(acorns.NAMES["exaspim"])
+
+    if df.empty and not force_update:
+        raise ValueError("Cache is empty. Use force_update=True to fetch data from database.")
+
+    if df.empty or force_update:
+        setup_logging()
+        logging.info(
+            SquirrelMessage(
+                tree=acorns.TREE.__class__.__name__,
+                acorn=acorns.NAMES["exaspim"],
+                message="Updating cache",
+            ).to_json()
+        )
+
+        basics = asset_basics()
+        raw_spim = basics[
+            (basics["data_level"] == "raw") & basics["modalities"].apply(lambda x: x is not None and not isinstance(x, float) and any("SPIM" in m for m in x))
+        ]
+        raw_spim = raw_spim[raw_spim["instrument_id"].str.contains("exa", case=False, na=False)]
+        raw_spim_names = list(raw_spim["name"].dropna())
+
+        sd = source_data()
+        stitched_candidates = sd[
+            sd["source_data"].isin(raw_spim_names) & sd["name"].str.contains("stitched", case=False, na=False)
+        ].copy()
+        stitched_candidates = (
+            stitched_candidates.sort_values("processing_time", ascending=False)
+            .groupby("source_data", as_index=False)
+            .first()
+        )
+        raw_to_stitched_series = stitched_candidates.set_index("source_data")["name"]
+        raw_to_stitched = {name: raw_to_stitched_series.get(name) for name in raw_spim_names}
+
+        stitched_names = [v for v in raw_to_stitched.values() if v is not None]
+
+        logging.info(
+            SquirrelMessage(
+                tree=acorns.TREE.__class__.__name__,
+                acorn=acorns.NAMES["exaspim"],
+                message=f"Fetching metadata for {len(stitched_names)} stitched and {len(raw_spim_names) - len(stitched_names)} unprocessed assets",
+            ).to_json()
+        )
+
+        metadata = _fetch_asset_metadata(stitched_names)
+        logging.info(
+            SquirrelMessage(
+                tree=acorns.TREE.__class__.__name__,
+                acorn=acorns.NAMES["exaspim"],
+                message=f"Fetched metadata for {len(metadata)} assets, fetching raw neuroglancer links from S3",
+            ).to_json()
+        )
+        raw_ng_links = {name: _fetch_raw_ng_link(name) for name in raw_spim_names}
+        logging.info(
+            SquirrelMessage(
+                tree=acorns.TREE.__class__.__name__,
+                acorn=acorns.NAMES["exaspim"],
+                message=f"Fetched {sum(v is not None for v in raw_ng_links.values())} raw neuroglancer links, building rows",
+            ).to_json()
+        )
+        rows = _build_rows(raw_to_stitched, metadata, raw_ng_links)
+        df = pd.DataFrame(rows)
+
+        acorns.TREE.hide(acorns.NAMES["exaspim"], df)
+
+    return df
+
+
 def assets_smartspim_columns() -> list[Column]:
     return [
         Column(name="name", description="Asset name (stitched if available, otherwise raw)"),
@@ -256,3 +327,7 @@ def assets_smartspim_columns() -> list[Column]:
         Column(name="quantification_link", description="Neuroglancer quantification link for this channel"),
         Column(name="alignment_link", description="Neuroglancer link to image_atlas_alignment/neuroglancer_config.json"),
     ]
+
+
+def platform_exaspim_columns() -> list[Column]:
+    return assets_smartspim_columns()

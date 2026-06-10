@@ -3,7 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .acorn_helpers.asset_basics import asset_basics_columns
-from .acorn_helpers.assets_smartspim import assets_smartspim_columns
+from .acorn_helpers.platform_spim import assets_smartspim_columns, platform_exaspim_columns
 from .acorn_helpers.foraging_sessions import foraging_sessions_columns
 from .acorn_helpers.behavior_curriculum import behavior_curriculum_columns
 from .acorn_helpers.platform_fib import platform_fib_columns
@@ -83,6 +83,14 @@ def publish_squirrel_metadata() -> None:
             columns=assets_smartspim_columns(),
         ),
         Acorn(
+            name=NAMES["exaspim"],
+            description="ExaSPIM assets including processing status and neuroglancer links",
+            location=TREE.get_location(NAMES["exaspim"]),
+            partitioned=False,
+            type=AcornType.metadata,
+            columns=platform_exaspim_columns(),
+        ),
+        Acorn(
             name=NAMES["upgrade"],
             description="Metadata upgrade status for each asset across versions",
             location=TREE.get_location(NAMES["upgrade"]),
@@ -128,44 +136,49 @@ def publish_squirrel_metadata() -> None:
     TREE.plant("squirrel.json", squirrel.model_dump_json())
 
 
-def hide_acorns():
-    """Trigger force update of all registered acorn functions.
+def hide_acorns(fast: bool = True, slow: bool = True) -> None:
+    """Trigger force update of registered acorn functions.
 
-    Updates each acorn individually. For the QC acorn, fetches
-    unique subject IDs from asset_basics and updates each individually,
-    using parallelization when multiple subjects are available.
-    After all updates, publishes Squirrel metadata JSON to the cache root.
+    asset_basics always runs first as it is a prerequisite for both sets.
+    Fast acorns (DocDB-only queries) and slow acorns (per-subject or S3 data)
+    can be run independently via the fast/slow flags.
+    After all selected updates, publishes Squirrel metadata JSON to the cache root.
+
+    Args:
+        fast: If True, run fast DocDB-only acorns (upn, usi, ugt, d2r, upgrade, fib, platform_qc).
+        slow: If True, run slow per-subject/S3 acorns (qc, smartspim, foraging, curriculum).
     """
-    ACORN_REGISTRY[NAMES["upn"]](force_update=True)
-    ACORN_REGISTRY[NAMES["usi"]](force_update=True)
-    ACORN_REGISTRY[NAMES["ugt"]](force_update=True)
-
     df_basics = ACORN_REGISTRY[NAMES["basics"]](force_update=True)
 
-    ACORN_REGISTRY[NAMES["d2r"]](force_update=True)
-    ACORN_REGISTRY[NAMES["upgrade"]](force_update=True)
+    if fast:
+        ACORN_REGISTRY[NAMES["upn"]](force_update=True)
+        ACORN_REGISTRY[NAMES["usi"]](force_update=True)
+        ACORN_REGISTRY[NAMES["ugt"]](force_update=True)
+        ACORN_REGISTRY[NAMES["d2r"]](force_update=True)
+        ACORN_REGISTRY[NAMES["upgrade"]](force_update=True)
+        ACORN_REGISTRY[NAMES["fib"]](force_update=True)
+        for platform in PLATFORMS:
+            ACORN_REGISTRY[NAMES["platform_qc"]](platform=platform, force_update=True)
 
-    subject_ids = df_basics["subject_id"].dropna().unique()
+    if slow:
+        subject_ids = df_basics["subject_id"].dropna().unique()
 
-    if len(subject_ids) > 0:
-        qc_acorn = ACORN_REGISTRY[NAMES["qc"]]
-        try:
-            with ThreadPoolExecutor() as executor:
-                futures = [
-                    executor.submit(qc_acorn, subject_id=subject_id, force_update=True) for subject_id in subject_ids
-                ]
-                for future in as_completed(futures):
-                    future.result()
-        except Exception:
-            for subject_id in subject_ids:
-                qc_acorn(subject_id=subject_id, force_update=True)
+        if len(subject_ids) > 0:
+            qc_acorn = ACORN_REGISTRY[NAMES["qc"]]
+            try:
+                with ThreadPoolExecutor() as executor:
+                    futures = [
+                        executor.submit(qc_acorn, subject_id=subject_id, force_update=True) for subject_id in subject_ids
+                    ]
+                    for future in as_completed(futures):
+                        future.result()
+            except Exception:
+                for subject_id in subject_ids:
+                    qc_acorn(subject_id=subject_id, force_update=True)
 
-    ACORN_REGISTRY[NAMES["smartspim"]](force_update=True)
-    ACORN_REGISTRY[NAMES["fib"]](force_update=True)
-    ACORN_REGISTRY[NAMES["foraging"]](force_update=True)
-    ACORN_REGISTRY[NAMES["curriculum"]](force_update=True)
-
-    for platform in PLATFORMS:
-        ACORN_REGISTRY[NAMES["platform_qc"]](platform=platform, force_update=True)
+        ACORN_REGISTRY[NAMES["smartspim"]](force_update=True)
+        ACORN_REGISTRY[NAMES["exaspim"]](force_update=True)
+        ACORN_REGISTRY[NAMES["foraging"]](force_update=True)
+        ACORN_REGISTRY[NAMES["curriculum"]](force_update=True)
 
     publish_squirrel_metadata()

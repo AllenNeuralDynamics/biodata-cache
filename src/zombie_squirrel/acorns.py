@@ -41,6 +41,7 @@ NAMES = {
     "r2d": "raw_to_derived",
     "qc": "quality_control",
     "smartspim": "assets_smartspim",
+    "exaspim": "platform_exaspim",
     "upgrade": "metadata_upgrade",
     "fib": "platform_fib",
     "core": "metadata_core",

@@ -10,7 +10,8 @@ __version__ = "0.29.0"
 
 from zombie_squirrel.acorn_helpers.asset_basics import asset_basics  # noqa: F401
 from zombie_squirrel.acorn_helpers.foraging_sessions import foraging_sessions  # noqa: F401
-from zombie_squirrel.acorn_helpers.assets_smartspim import assets_smartspim  # noqa: F401
+from zombie_squirrel.acorn_helpers.platform_spim import assets_smartspim  # noqa: F401
+from zombie_squirrel.acorn_helpers.platform_spim import platform_exaspim  # noqa: F401
 from zombie_squirrel.acorn_helpers.behavior_curriculum import behavior_curriculum  # noqa: F401
 from zombie_squirrel.acorn_helpers.platform_fib import platform_fib  # noqa: F401
 from zombie_squirrel.acorn_helpers.platform_qc import platform_qc  # noqa: F401

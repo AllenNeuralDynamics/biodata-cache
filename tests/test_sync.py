@@ -41,10 +41,10 @@ def test_all_acorns_called_with_force_update(mock_registry, mock_publish):
 
     hide_acorns()
 
+    mock_basics.assert_called_once_with(force_update=True)
     mock_upn.assert_called_once_with(force_update=True)
     mock_usi.assert_called_once_with(force_update=True)
     mock_ugt.assert_called_once_with(force_update=True)
-    mock_basics.assert_called_once_with(force_update=True)
     mock_d2r.assert_called_once_with(force_update=True)
     mock_r2d.assert_not_called()
     mock_smartspim.assert_called_once_with(force_update=True)
@@ -108,6 +108,88 @@ def test_exception_from_acorn_propagates(mock_registry, mock_publish):
 
     with pytest.raises(Exception, match="Update failed"):
         hide_acorns()
+
+
+@patch("zombie_squirrel.sync.publish_squirrel_metadata")
+@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+def test_fast_only_skips_slow_acorns(mock_registry, mock_publish):
+    df_basics = pd.DataFrame({"subject_id": ["sub1"]})
+    mock_basics = MagicMock(return_value=df_basics)
+    mock_qc = MagicMock()
+    mock_smartspim = MagicMock()
+    mock_foraging = MagicMock()
+    mock_curriculum = MagicMock()
+    mock_registry.__getitem__.side_effect = lambda x: {
+        "unique_project_names": MagicMock(),
+        "unique_subject_ids": MagicMock(),
+        "unique_genotypes": MagicMock(),
+        "asset_basics": mock_basics,
+        "source_data": MagicMock(),
+        "raw_to_derived": MagicMock(),
+        "quality_control": mock_qc,
+        "assets_smartspim": mock_smartspim,
+        "metadata_upgrade": MagicMock(),
+        "platform_fib": MagicMock(),
+        "foraging_sessions": mock_foraging,
+        "behavior_curriculum": mock_curriculum,
+        "platform_qc": MagicMock(),
+    }[x]
+
+    hide_acorns(fast=True, slow=False)
+
+    mock_basics.assert_called_once_with(force_update=True)
+    mock_qc.assert_not_called()
+    mock_smartspim.assert_not_called()
+    mock_foraging.assert_not_called()
+    mock_curriculum.assert_not_called()
+
+
+@patch("zombie_squirrel.sync.publish_squirrel_metadata")
+@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+def test_slow_only_skips_fast_acorns(mock_registry, mock_publish):
+    df_basics = pd.DataFrame({"subject_id": ["sub1"]})
+    mock_basics = MagicMock(return_value=df_basics)
+    mock_upn = MagicMock()
+    mock_usi = MagicMock()
+    mock_ugt = MagicMock()
+    mock_d2r = MagicMock()
+    mock_upgrade = MagicMock()
+    mock_fib = MagicMock()
+    mock_qc = MagicMock()
+    mock_smartspim = MagicMock()
+    mock_foraging = MagicMock()
+    mock_curriculum = MagicMock()
+    mock_platform_qc = MagicMock()
+    mock_registry.__getitem__.side_effect = lambda x: {
+        "unique_project_names": mock_upn,
+        "unique_subject_ids": mock_usi,
+        "unique_genotypes": mock_ugt,
+        "asset_basics": mock_basics,
+        "source_data": mock_d2r,
+        "raw_to_derived": MagicMock(),
+        "quality_control": mock_qc,
+        "assets_smartspim": mock_smartspim,
+        "metadata_upgrade": mock_upgrade,
+        "platform_fib": mock_fib,
+        "foraging_sessions": mock_foraging,
+        "behavior_curriculum": mock_curriculum,
+        "platform_qc": mock_platform_qc,
+    }[x]
+
+    hide_acorns(fast=False, slow=True)
+
+    mock_basics.assert_called_once_with(force_update=True)
+    mock_upn.assert_not_called()
+    mock_usi.assert_not_called()
+    mock_ugt.assert_not_called()
+    mock_d2r.assert_not_called()
+    mock_upgrade.assert_not_called()
+    mock_fib.assert_not_called()
+    mock_platform_qc.assert_not_called()
+    mock_qc.assert_called_once_with(subject_id="sub1", force_update=True)
+    mock_smartspim.assert_called_once_with(force_update=True)
+    mock_foraging.assert_called_once_with(force_update=True)
+    mock_curriculum.assert_called_once_with(force_update=True)
 
 
 # --- publish_squirrel_metadata ---
