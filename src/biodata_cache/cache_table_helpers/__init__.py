@@ -17,4 +17,5 @@ from biodata_cache.cache_table_helpers import (  # noqa: F401
     unique_genotypes,
     unique_project_names,
     unique_subject_ids,
+    time_to_qc,
 )

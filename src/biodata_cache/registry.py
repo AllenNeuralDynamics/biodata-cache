@@ -42,7 +42,7 @@ NAMES = {
     "d2r": "source_data",
     "r2d": "raw_to_derived",
     "qc": "quality_control",
-    "smartspim": "assets_smartspim",
+    "smartspim": "platform_smartspim",
     "exaspim": "platform_exaspim",
     "upgrade": "metadata_upgrade",
     "fib": "platform_fib",
@@ -50,6 +50,7 @@ NAMES = {
     "foraging": "foraging_sessions",
     "curriculum": "behavior_curriculum",
     "platform_qc": "platform_qc",
+    "time_to_qc": "time_to_qc",
 }
 
 TABLE_REGISTRY: dict[str, Callable[[], Any]] = {}

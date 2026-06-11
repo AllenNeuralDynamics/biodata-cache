@@ -12,6 +12,7 @@ from .cache_table_helpers.platform_qc import PLATFORMS, platform_qc_columns
 from .cache_table_helpers.platform_smartspim import assets_smartspim_columns
 from .cache_table_helpers.qc import qc_columns
 from .cache_table_helpers.source_data import source_data_columns
+from .cache_table_helpers.time_to_qc import time_to_qc_columns
 from .cache_table_helpers.unique_genotypes import unique_genotypes_columns
 from .cache_table_helpers.unique_project_names import unique_project_names_columns
 from .cache_table_helpers.unique_subject_ids import unique_subject_ids_columns
@@ -132,6 +133,14 @@ def publish_cache_registry() -> None:
             type=CacheTableType.platform,
             columns=platform_qc_columns(),
         ),
+        CacheTable(
+            name=NAMES["time_to_qc"],
+            description="Time from processing completion to QC completion for derived assets",
+            location=BACKEND.get_location(NAMES["time_to_qc"]),
+            partitioned=False,
+            type=CacheTableType.metadata,
+            columns=time_to_qc_columns(),
+        ),
     ]
     registry = CacheRegistry(tables=table_list)
     BACKEND.put_json("cache_registry.json", registry.model_dump_json())
@@ -182,5 +191,6 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
         TABLE_REGISTRY[NAMES["exaspim"]](force_update=True)
         TABLE_REGISTRY[NAMES["foraging"]](force_update=True)
         TABLE_REGISTRY[NAMES["curriculum"]](force_update=True)
+        TABLE_REGISTRY[NAMES["time_to_qc"]](force_update=True)
 
     publish_cache_registry()
