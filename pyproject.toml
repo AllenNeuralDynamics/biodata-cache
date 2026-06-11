@@ -22,6 +22,7 @@ dependencies = [
     'boto3',
     'pandas>=2.2.0',
     'aind-data-access-api[docdb]',
+    'semver',
 ]
 
 [dependency-groups]

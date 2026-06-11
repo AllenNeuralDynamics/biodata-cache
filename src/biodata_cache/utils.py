@@ -5,7 +5,12 @@ import re
 
 from pydantic import BaseModel
 
-from biodata_cache import __version__ as BDC_VERSION  # noqa: F401
+import semver
+
+from biodata_cache import __version__ as _BDC_FULL_VERSION
+
+_parsed = semver.Version.parse(_BDC_FULL_VERSION)
+BDC_VERSION = f"{_parsed.major}.{_parsed.minor}"
 
 
 class CacheLogMessage(BaseModel):
