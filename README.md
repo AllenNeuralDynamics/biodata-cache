@@ -9,7 +9,7 @@
 
 `biodata-cache` is a set of one-line functions that handle the entire process of caching and retrieving data (and metadata) from AIND data assets.
 
-In the background, the ZOMBIE squirrel repackages data/metadata into dataframes and stores them on S3 in versioned folders (`data-asset-cache/bdc-v{version}/`), or in memory for testing. Each release writes to its own versioned folder, so older versions of the website remain accessible while new versions are deployed. A top-level `data-asset-cache/cache_versions.json` index lists all available version folders.
+In the background, the cache repackages data/metadata into dataframes and stores them on S3 in versioned folders (`data-asset-cache/bdc-v{version}/`), or in memory for testing. Each release writes to its own versioned folder, so older versions of the website remain accessible while new versions are deployed. A top-level `data-asset-cache/cache_versions.json` index lists all available version folders.
 
 Important: this package is not at 1.0. It is changing *fast* and breaking changes are still occurring, although rarely. To reduce the chance of impact on your code the cache tables are versioned. This does mean that if you want the latest version of the tables you need to keep biodata-cache up-to-date, but it also means your code won't immediately break when I change the way the tables work.
 
