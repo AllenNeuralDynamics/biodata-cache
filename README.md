@@ -15,8 +15,11 @@ Important: this package is not at 1.0. It is changing *fast* and breaking change
 
 ## Installation
 
+Note that you **must set the backend to S3** or `biodata-cache` will automatically re-cache the tables locally in memory. This can take a LONG time.
+
 ```bash
 pip install biodata-cache
+export BIODATA_CACHE_BACKEND='S3'
 ```
 
 ## Usage
