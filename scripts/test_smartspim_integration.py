@@ -10,7 +10,7 @@ import pandas as pd
 
 os.environ["FOREST_TYPE"] = "memory"
 
-from zombie_squirrel.acorn_helpers.platform_spim import (  # noqa: E402
+from zombie_squirrel.acorn_helpers.platform_smartspim import (  # noqa: E402
     _build_rows,
     _fetch_asset_metadata,
 )

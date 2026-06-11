@@ -3,7 +3,8 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .acorn_helpers.asset_basics import asset_basics_columns
-from .acorn_helpers.platform_spim import assets_smartspim_columns, platform_exaspim_columns
+from .acorn_helpers.platform_smartspim import assets_smartspim_columns
+from .acorn_helpers.platform_exaspim import platform_exaspim_columns
 from .acorn_helpers.foraging_sessions import foraging_sessions_columns
 from .acorn_helpers.behavior_curriculum import behavior_curriculum_columns
 from .acorn_helpers.platform_fib import platform_fib_columns

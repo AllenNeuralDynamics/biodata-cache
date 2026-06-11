@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from zombie_squirrel.acorn_helpers.platform_spim import (
+from zombie_squirrel.acorn_helpers.platform_smartspim import (
     _alignment_link,
     _build_rows,
     _fetch_asset_metadata,
@@ -57,7 +57,7 @@ def test_alignment_link():
 
 # --- _list_channels ---
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim.boto3.client")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.boto3.client")
 def test_list_channels_returns_channel_names(mock_boto_client):
     mock_s3 = MagicMock()
     mock_boto_client.return_value = mock_s3
@@ -75,7 +75,7 @@ def test_list_channels_returns_channel_names(mock_boto_client):
         Delimiter="/",
     )
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim.boto3.client")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.boto3.client")
 def test_list_channels_returns_empty_when_no_prefixes(mock_boto_client):
     mock_s3 = MagicMock()
     mock_boto_client.return_value = mock_s3
@@ -85,7 +85,7 @@ def test_list_channels_returns_empty_when_no_prefixes(mock_boto_client):
 
 # --- _fetch_raw_ng_link ---
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim.boto3.client")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.boto3.client")
 def test_fetch_raw_ng_link_returns_link(mock_boto_client):
     mock_s3 = MagicMock()
     mock_boto_client.return_value = mock_s3
@@ -98,7 +98,7 @@ def test_fetch_raw_ng_link_returns_link(mock_boto_client):
         Key=f"{RAW_NAME}/SPIM/derivatives/neuroglancer_config.json",
     )
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim.boto3.client")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.boto3.client")
 def test_fetch_raw_ng_link_fixes_missing_spim_prefix(mock_boto_client):
     mock_s3 = MagicMock()
     mock_boto_client.return_value = mock_s3
@@ -108,7 +108,7 @@ def test_fetch_raw_ng_link_fixes_missing_spim_prefix(mock_boto_client):
     result = _fetch_raw_ng_link(RAW_NAME)
     assert result == fixed_link
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim.boto3.client")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.boto3.client")
 def test_fetch_raw_ng_link_returns_none_on_s3_error(mock_boto_client):
     mock_s3 = MagicMock()
     mock_boto_client.return_value = mock_s3
@@ -119,7 +119,7 @@ def test_fetch_raw_ng_link_returns_none_on_s3_error(mock_boto_client):
 
 # --- _fetch_asset_metadata ---
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim.MetadataDbClient")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.MetadataDbClient")
 def test_fetch_asset_metadata_returns_dict_keyed_by_name(mock_client_class):
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
@@ -128,7 +128,7 @@ def test_fetch_asset_metadata_returns_dict_keyed_by_name(mock_client_class):
     assert STITCHED_NAME in result
     assert result[STITCHED_NAME]["_id"] == "abc123"
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim.MetadataDbClient")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.MetadataDbClient")
 def test_fetch_asset_metadata_passes_correct_filter(mock_client_class):
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
@@ -138,7 +138,7 @@ def test_fetch_asset_metadata_passes_correct_filter(mock_client_class):
     call_kwargs = mock_client.retrieve_docdb_records.call_args[1]
     assert call_kwargs["filter_query"] == {"name": {"$in": names}}
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim.MetadataDbClient")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.MetadataDbClient")
 def test_fetch_asset_metadata_batches_large_requests(mock_client_class):
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
@@ -149,7 +149,7 @@ def test_fetch_asset_metadata_batches_large_requests(mock_client_class):
 
 # --- _build_rows ---
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim._list_channels")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim._list_channels")
 def test_build_rows_one_row_per_channel(mock_list_channels):
     mock_list_channels.return_value = ["Ex_488_Em_525", "Ex_561_Em_600"]
     rows = _build_rows({RAW_NAME: STITCHED_NAME}, {STITCHED_NAME: EXAMPLE_RECORD}, {RAW_NAME: None})
@@ -157,7 +157,7 @@ def test_build_rows_one_row_per_channel(mock_list_channels):
     assert rows[0]["channel"] == "Ex_488_Em_525"
     assert rows[1]["channel"] == "Ex_561_Em_600"
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim._list_channels")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim._list_channels")
 def test_build_rows_processed_row_fields_populated(mock_list_channels):
     mock_list_channels.return_value = ["Ex_561_Em_600"]
     raw_link = "https://example.com/raw_ng_link"
@@ -176,7 +176,7 @@ def test_build_rows_processed_row_fields_populated(mock_list_channels):
     assert row["alignment_link"] == _alignment_link(LOCATION)
     assert row["processed"] is True
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim._list_channels")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim._list_channels")
 def test_build_rows_processed_no_channels_emits_single_null_row(mock_list_channels):
     mock_list_channels.return_value = []
     rows = _build_rows({RAW_NAME: STITCHED_NAME}, {STITCHED_NAME: EXAMPLE_RECORD}, {RAW_NAME: None})
@@ -189,7 +189,7 @@ def test_build_rows_processed_no_channels_emits_single_null_row(mock_list_channe
     assert rows[0]["name"] == STITCHED_NAME
     assert rows[0]["raw_name"] == RAW_NAME
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim._list_channels")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim._list_channels")
 def test_build_rows_unprocessed_row_has_no_links(mock_list_channels):
     raw_link = "https://example.com/raw_ng_link"
     row = _build_rows({RAW_NAME: None}, {}, {RAW_NAME: raw_link})[0]
@@ -205,7 +205,7 @@ def test_build_rows_unprocessed_row_has_no_links(mock_list_channels):
     assert row["processed"] is False
     mock_list_channels.assert_not_called()
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim._list_channels")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim._list_channels")
 def test_build_rows_uses_last_data_process_end_time(mock_list_channels):
     mock_list_channels.return_value = []
     record = {**EXAMPLE_RECORD, "processing": {"data_processes": [
@@ -214,7 +214,7 @@ def test_build_rows_uses_last_data_process_end_time(mock_list_channels):
     rows = _build_rows({RAW_NAME: STITCHED_NAME}, {STITCHED_NAME: record}, {RAW_NAME: None})
     assert rows[0]["processing_end_time"] == "2026-01-02T12:00:00"
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim._list_channels")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim._list_channels")
 def test_build_rows_no_data_processes_gives_null_end_time(mock_list_channels):
     mock_list_channels.return_value = []
     record = {**EXAMPLE_RECORD, "processing": {"data_processes": []}}
@@ -224,7 +224,7 @@ def test_build_rows_no_data_processes_gives_null_end_time(mock_list_channels):
 
 # --- assets_smartspim ---
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim.acorns.TREE")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.acorns.TREE")
 def test_cache_hit_returns_cached_df(mock_tree):
     cached_df = pd.DataFrame({"name": ["asset_a"], "channel": ["Ex_561_Em_600"]})
     mock_tree.scurry.return_value = cached_df
@@ -232,21 +232,21 @@ def test_cache_hit_returns_cached_df(mock_tree):
     assert len(result) == 1
     mock_tree.hide.assert_not_called()
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim.acorns.TREE")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.acorns.TREE")
 def test_empty_cache_raises_without_force_update(mock_tree):
     mock_tree.scurry.return_value = pd.DataFrame()
     with pytest.raises(ValueError, match="Cache is empty"):
         assets_smartspim(force_update=False)
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim._fetch_raw_ng_link")
-@patch("zombie_squirrel.acorn_helpers.platform_spim._build_rows")
-@patch("zombie_squirrel.acorn_helpers.platform_spim._fetch_asset_metadata")
-@patch("zombie_squirrel.acorn_helpers.platform_spim.source_data")
-@patch("zombie_squirrel.acorn_helpers.platform_spim.asset_basics")
-@patch("zombie_squirrel.acorn_helpers.platform_spim.acorns.TREE")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim._fetch_raw_ng_link")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim._build_rows")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim._fetch_asset_metadata")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.source_data")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.asset_basics")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.acorns.TREE")
 def test_force_update_builds_and_caches(mock_tree, mock_asset_basics, mock_source_data, mock_fetch_meta, mock_build_rows, mock_raw_ng_link):
     mock_tree.scurry.return_value = pd.DataFrame()
-    mock_asset_basics.return_value = pd.DataFrame({"data_level": ["raw"], "modalities": [np.array(["SPIM"])], "name": [RAW_NAME]})
+    mock_asset_basics.return_value = pd.DataFrame({"data_level": ["raw"], "modalities": [np.array(["SPIM"])], "name": [RAW_NAME], "instrument_id": ["SmartSPIM_123"]})
     mock_source_data.return_value = pd.DataFrame({
         "name": [STITCHED_NAME],
         "source_data": [RAW_NAME],
@@ -260,13 +260,13 @@ def test_force_update_builds_and_caches(mock_tree, mock_asset_basics, mock_sourc
     assert len(result) == 1
     mock_tree.hide.assert_called_once()
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim._fetch_raw_ng_link")
-@patch("zombie_squirrel.acorn_helpers.platform_spim.source_data")
-@patch("zombie_squirrel.acorn_helpers.platform_spim.asset_basics")
-@patch("zombie_squirrel.acorn_helpers.platform_spim.acorns.TREE")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim._fetch_raw_ng_link")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.source_data")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.asset_basics")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.acorns.TREE")
 def test_unprocessed_assets_included_with_processed_false(mock_tree, mock_asset_basics, mock_source_data, mock_raw_ng_link):
     mock_tree.scurry.return_value = pd.DataFrame()
-    mock_asset_basics.return_value = pd.DataFrame({"data_level": ["raw"], "modalities": [np.array(["SPIM"])], "name": [RAW_NAME]})
+    mock_asset_basics.return_value = pd.DataFrame({"data_level": ["raw"], "modalities": [np.array(["SPIM"])], "name": [RAW_NAME], "instrument_id": ["SmartSPIM_123"]})
     mock_source_data.return_value = pd.DataFrame({
         "name": [f"{RAW_NAME}_processed_2026-01-02_00-00-00"],
         "source_data": [RAW_NAME],
@@ -274,24 +274,25 @@ def test_unprocessed_assets_included_with_processed_false(mock_tree, mock_asset_
         "processing_time": ["2026-01-02_00-00-00"],
     })
     mock_raw_ng_link.return_value = None
-    with patch("zombie_squirrel.acorn_helpers.platform_spim._fetch_asset_metadata", return_value={}):
-        with patch("zombie_squirrel.acorn_helpers.platform_spim._build_rows", return_value=[{"name": RAW_NAME, "raw_name": RAW_NAME, "processed": False, "channel": None}]) as mock_build:
+    with patch("zombie_squirrel.acorn_helpers.platform_smartspim._fetch_asset_metadata", return_value={}):
+        with patch("zombie_squirrel.acorn_helpers.platform_smartspim._build_rows", return_value=[{"name": RAW_NAME, "raw_name": RAW_NAME, "processed": False, "channel": None}]) as mock_build:
             assets_smartspim(force_update=True)
     raw_to_stitched_arg = mock_build.call_args[0][0]
     assert RAW_NAME in raw_to_stitched_arg
     assert raw_to_stitched_arg[RAW_NAME] is None
     mock_tree.hide.assert_called_once()
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim._fetch_raw_ng_link")
-@patch("zombie_squirrel.acorn_helpers.platform_spim.source_data")
-@patch("zombie_squirrel.acorn_helpers.platform_spim.asset_basics")
-@patch("zombie_squirrel.acorn_helpers.platform_spim.acorns.TREE")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim._fetch_raw_ng_link")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.source_data")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.asset_basics")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.acorns.TREE")
 def test_filters_only_raw_spim_assets(mock_tree, mock_asset_basics, mock_source_data, mock_raw_ng_link):
     mock_tree.scurry.return_value = pd.DataFrame()
     mock_asset_basics.return_value = pd.DataFrame({
         "data_level": ["raw", "raw", "derived"],
         "modalities": [np.array(["SPIM"]), np.array(["ECEPHYS"]), np.array(["SPIM"])],
         "name": ["spim_raw", "ecephys_raw", "spim_derived"],
+        "instrument_id": ["SmartSPIM_123", "probe_123", "SmartSPIM_123"],
     })
     mock_source_data.return_value = pd.DataFrame({
         "name": ["spim_raw_stitched_2026-01-02_00-00-00", "ecephys_raw_derived", "spim_derived_stitched"],
@@ -300,8 +301,8 @@ def test_filters_only_raw_spim_assets(mock_tree, mock_asset_basics, mock_source_
         "processing_time": ["2026-01-02_00-00-00", "2026-01-02_00-00-00", "2026-01-02_00-00-00"],
     })
     mock_raw_ng_link.return_value = None
-    with patch("zombie_squirrel.acorn_helpers.platform_spim._fetch_asset_metadata", return_value={}):
-        with patch("zombie_squirrel.acorn_helpers.platform_spim._build_rows", return_value=[]) as mock_build:
+    with patch("zombie_squirrel.acorn_helpers.platform_smartspim._fetch_asset_metadata", return_value={}):
+        with patch("zombie_squirrel.acorn_helpers.platform_smartspim._build_rows", return_value=[]) as mock_build:
             assets_smartspim(force_update=True)
     raw_to_stitched_arg = mock_build.call_args[0][0]
     assert "spim_raw" in raw_to_stitched_arg
@@ -318,11 +319,11 @@ def test_returns_expected_columns():
     ]
 
 
-@patch("zombie_squirrel.acorn_helpers.platform_spim._fetch_raw_ng_link")
-@patch("zombie_squirrel.acorn_helpers.platform_spim._fetch_asset_metadata")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim._fetch_raw_ng_link")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim._fetch_asset_metadata")
 @patch("zombie_squirrel.acorn_helpers.source_data.MetadataDbClient")
 @patch("zombie_squirrel.acorn_helpers.asset_basics.MetadataDbClient")
-@patch("zombie_squirrel.acorn_helpers.platform_spim.acorns.TREE")
+@patch("zombie_squirrel.acorn_helpers.platform_smartspim.acorns.TREE")
 def test_force_update_cold_dependency_cache(
     mock_tree, mock_basics_client, mock_sd_client, mock_fetch_meta, mock_raw_ng_link
 ):

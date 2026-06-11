@@ -41,7 +41,7 @@ def test_realtime_value():
     assert AcornType.realtime.value == "realtime"
 
 def test_all_types_count():
-    assert len(AcornType) == 4
+    assert len(AcornType) == 5
 
 
 # --- Acorn ---

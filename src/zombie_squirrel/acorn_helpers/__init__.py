@@ -2,10 +2,15 @@
 
 from zombie_squirrel.acorn_helpers import (  # noqa: F401
     asset_basics,
+    behavior_curriculum,
     custom,
     foraging_sessions,
     metadata_core,
+    metadata_upgrade,
+    platform_exaspim,
+    platform_fib,
     platform_qc,
+    platform_smartspim,
     qc,
     raw_to_derived,
     source_data,

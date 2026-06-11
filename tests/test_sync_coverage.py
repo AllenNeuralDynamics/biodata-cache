@@ -31,6 +31,7 @@ def test_hide_acorns_fallback_sequential_on_concurrent_failure(mock_registry, mo
         "source_data": mock_d2r,
         "quality_control": mock_qc,
         "assets_smartspim": MagicMock(),
+        "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
         "foraging_sessions": MagicMock(),

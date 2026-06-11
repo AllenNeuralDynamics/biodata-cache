@@ -19,6 +19,7 @@ def _make_registry(mock_upn, mock_usi, mock_ugt, mock_basics, mock_d2r, mock_r2d
         "raw_to_derived": mock_r2d,
         "quality_control": mock_qc,
         "assets_smartspim": mock_smartspim,
+        "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
         "foraging_sessions": MagicMock(),
@@ -169,6 +170,7 @@ def test_slow_only_skips_fast_acorns(mock_registry, mock_publish):
         "raw_to_derived": MagicMock(),
         "quality_control": mock_qc,
         "assets_smartspim": mock_smartspim,
+        "platform_exaspim": MagicMock(),
         "metadata_upgrade": mock_upgrade,
         "platform_fib": mock_fib,
         "foraging_sessions": mock_foraging,
@@ -208,7 +210,7 @@ def test_published_json_contains_nine_acorns(mock_tree):
     publish_squirrel_metadata()
     payload = json.loads(mock_tree.plant.call_args[0][1])
     assert "acorns" in payload
-    assert len(payload["acorns"]) == 12
+    assert len(payload["acorns"]) == 13
 
 
 @patch("zombie_squirrel.sync.TREE")
@@ -250,7 +252,7 @@ def test_non_qc_acorns_are_metadata_type(mock_tree):
 def test_get_location_called_for_each_acorn(mock_tree):
     mock_tree.get_location.return_value = "s3://bucket/path"
     publish_squirrel_metadata()
-    assert mock_tree.get_location.call_count == 12
+    assert mock_tree.get_location.call_count == 13
 
 
 @patch("zombie_squirrel.sync.TREE")
@@ -284,6 +286,7 @@ def test_hide_acorns_calls_all_acorns(mock_registry, mock_tree):
         "raw_to_derived": mock_r2d,
         "quality_control": mock_qc,
         "assets_smartspim": mock_smartspim,
+        "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": mock_fib,
         "foraging_sessions": MagicMock(),
@@ -319,6 +322,7 @@ def test_hide_acorns_empty_registry(mock_registry, mock_tree):
         "raw_to_derived": mock_r2d,
         "quality_control": mock_qc,
         "assets_smartspim": MagicMock(),
+        "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
         "foraging_sessions": MagicMock(),
@@ -351,6 +355,7 @@ def test_hide_acorns_single_acorn(mock_registry, mock_tree):
         "raw_to_derived": MagicMock(),
         "quality_control": mock_qc,
         "assets_smartspim": MagicMock(),
+        "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
         "foraging_sessions": MagicMock(),
@@ -378,6 +383,7 @@ def test_hide_acorns_acorn_order_independent(mock_registry, mock_tree):
         "raw_to_derived": MagicMock(),
         "quality_control": mock_qc,
         "assets_smartspim": MagicMock(),
+        "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
         "foraging_sessions": MagicMock(),
@@ -405,6 +411,7 @@ def test_hide_acorns_propagates_exceptions(mock_registry):
         "raw_to_derived": MagicMock(),
         "quality_control": MagicMock(),
         "assets_smartspim": MagicMock(),
+        "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
         "foraging_sessions": MagicMock(),
