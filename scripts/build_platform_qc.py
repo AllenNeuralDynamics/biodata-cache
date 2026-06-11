@@ -7,8 +7,8 @@ Usage:
 import argparse
 import logging
 
-from zombie_squirrel.acorn_helpers.platform_qc import PLATFORMS
-from zombie_squirrel.acorns import ACORN_REGISTRY
+from biodata_cache.cache_table_helpers.platform_qc import PLATFORMS
+from biodata_cache.registry import TABLE_REGISTRY
 
 
 def main():
@@ -18,7 +18,7 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    platform_qc = ACORN_REGISTRY["platform_qc"]
+    platform_qc = TABLE_REGISTRY["platform_qc"]
     targets = [args.platform] if args.platform else PLATFORMS
 
     for platform in targets:

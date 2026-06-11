@@ -1,1 +1,1 @@
-"""Unit tests for zombie-squirrel package."""
+"""Unit tests for biodata-cache package."""

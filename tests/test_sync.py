@@ -1,4 +1,4 @@
-"""Unit tests for zombie_squirrel.sync module."""
+"""Unit tests for biodata_cache.sync module."""
 
 import json
 from unittest.mock import MagicMock, call, patch
@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, call, patch
 import pandas as pd
 import pytest
 
-from zombie_squirrel.sync import hide_acorns, publish_squirrel_metadata
+from biodata_cache.sync import publish_cache_registry, update_all_tables
 
 
 def _make_registry(mock_upn, mock_usi, mock_ugt, mock_basics, mock_d2r, mock_r2d, mock_qc, mock_smartspim):
@@ -28,11 +28,12 @@ def _make_registry(mock_upn, mock_usi, mock_ugt, mock_basics, mock_d2r, mock_r2d
     }
 
 
-# --- hide_acorns ---
+# --- update_all_tables ---
 
-@patch("zombie_squirrel.sync.publish_squirrel_metadata")
-@patch("zombie_squirrel.sync.ACORN_REGISTRY")
-def test_all_acorns_called_with_force_update(mock_registry, mock_publish):
+
+@patch("biodata_cache.sync.publish_cache_registry")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
+def test_all_tables_called_with_force_update(mock_registry, mock_publish):
     df_basics = pd.DataFrame({"subject_id": ["sub1"]})
     mock_basics = MagicMock(return_value=df_basics)
     mock_upn, mock_usi, mock_ugt, mock_d2r, mock_r2d, mock_qc, mock_smartspim = (MagicMock() for _ in range(7))
@@ -40,7 +41,7 @@ def test_all_acorns_called_with_force_update(mock_registry, mock_publish):
         mock_upn, mock_usi, mock_ugt, mock_basics, mock_d2r, mock_r2d, mock_qc, mock_smartspim
     ).__getitem__
 
-    hide_acorns()
+    update_all_tables()
 
     mock_basics.assert_called_once_with(force_update=True)
     mock_upn.assert_called_once_with(force_update=True)
@@ -51,8 +52,8 @@ def test_all_acorns_called_with_force_update(mock_registry, mock_publish):
     mock_smartspim.assert_called_once_with(force_update=True)
 
 
-@patch("zombie_squirrel.sync.publish_squirrel_metadata")
-@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+@patch("biodata_cache.sync.publish_cache_registry")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
 def test_qc_called_per_subject(mock_registry, mock_publish):
     df_basics = pd.DataFrame({"subject_id": ["sub1", "sub2", None]})
     mock_basics = MagicMock(return_value=df_basics)
@@ -61,7 +62,7 @@ def test_qc_called_per_subject(mock_registry, mock_publish):
         MagicMock(), MagicMock(), MagicMock(), mock_basics, MagicMock(), MagicMock(), mock_qc, MagicMock()
     ).__getitem__
 
-    hide_acorns()
+    update_all_tables()
 
     mock_qc.assert_has_calls(
         [call(subject_id="sub1", force_update=True), call(subject_id="sub2", force_update=True)],
@@ -70,8 +71,8 @@ def test_qc_called_per_subject(mock_registry, mock_publish):
     assert mock_qc.call_count == 2
 
 
-@patch("zombie_squirrel.sync.publish_squirrel_metadata")
-@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+@patch("biodata_cache.sync.publish_cache_registry")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
 def test_qc_skipped_when_no_subjects(mock_registry, mock_publish):
     df_basics = pd.DataFrame({"subject_id": [None, None]})
     mock_basics = MagicMock(return_value=df_basics)
@@ -80,13 +81,13 @@ def test_qc_skipped_when_no_subjects(mock_registry, mock_publish):
         MagicMock(), MagicMock(), MagicMock(), mock_basics, MagicMock(), MagicMock(), mock_qc, MagicMock()
     ).__getitem__
 
-    hide_acorns()
+    update_all_tables()
 
     mock_qc.assert_not_called()
 
 
-@patch("zombie_squirrel.sync.publish_squirrel_metadata")
-@patch("zombie_squirrel.sync.ACORN_REGISTRY")
+@patch("biodata_cache.sync.publish_cache_registry")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
 def test_publish_metadata_called_at_end(mock_registry, mock_publish):
     df_basics = pd.DataFrame({"subject_id": ["sub1"]})
     mock_basics = MagicMock(return_value=df_basics)
@@ -94,26 +95,26 @@ def test_publish_metadata_called_at_end(mock_registry, mock_publish):
         MagicMock(), MagicMock(), MagicMock(), mock_basics, MagicMock(), MagicMock(), MagicMock(), MagicMock()
     ).__getitem__
 
-    hide_acorns()
+    update_all_tables()
 
     mock_publish.assert_called_once()
 
 
-@patch("zombie_squirrel.sync.publish_squirrel_metadata")
-@patch("zombie_squirrel.sync.ACORN_REGISTRY")
-def test_exception_from_acorn_propagates(mock_registry, mock_publish):
+@patch("biodata_cache.sync.publish_cache_registry")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
+def test_exception_from_table_propagates(mock_registry, mock_publish):
     mock_upn = MagicMock(side_effect=Exception("Update failed"))
     mock_registry.__getitem__.side_effect = _make_registry(
         mock_upn, MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock()
     ).__getitem__
 
     with pytest.raises(Exception, match="Update failed"):
-        hide_acorns()
+        update_all_tables()
 
 
-@patch("zombie_squirrel.sync.publish_squirrel_metadata")
-@patch("zombie_squirrel.sync.ACORN_REGISTRY")
-def test_fast_only_skips_slow_acorns(mock_registry, mock_publish):
+@patch("biodata_cache.sync.publish_cache_registry")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
+def test_fast_only_skips_slow_tables(mock_registry, mock_publish):
     df_basics = pd.DataFrame({"subject_id": ["sub1"]})
     mock_basics = MagicMock(return_value=df_basics)
     mock_qc = MagicMock()
@@ -136,7 +137,7 @@ def test_fast_only_skips_slow_acorns(mock_registry, mock_publish):
         "platform_qc": MagicMock(),
     }[x]
 
-    hide_acorns(fast=True, slow=False)
+    update_all_tables(fast=True, slow=False)
 
     mock_basics.assert_called_once_with(force_update=True)
     mock_qc.assert_not_called()
@@ -145,9 +146,9 @@ def test_fast_only_skips_slow_acorns(mock_registry, mock_publish):
     mock_curriculum.assert_not_called()
 
 
-@patch("zombie_squirrel.sync.publish_squirrel_metadata")
-@patch("zombie_squirrel.sync.ACORN_REGISTRY")
-def test_slow_only_skips_fast_acorns(mock_registry, mock_publish):
+@patch("biodata_cache.sync.publish_cache_registry")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
+def test_slow_only_skips_fast_tables(mock_registry, mock_publish):
     df_basics = pd.DataFrame({"subject_id": ["sub1"]})
     mock_basics = MagicMock(return_value=df_basics)
     mock_upn = MagicMock()
@@ -178,7 +179,7 @@ def test_slow_only_skips_fast_acorns(mock_registry, mock_publish):
         "platform_qc": mock_platform_qc,
     }[x]
 
-    hide_acorns(fast=False, slow=True)
+    update_all_tables(fast=False, slow=True)
 
     mock_basics.assert_called_once_with(force_update=True)
     mock_upn.assert_not_called()
@@ -194,88 +195,100 @@ def test_slow_only_skips_fast_acorns(mock_registry, mock_publish):
     mock_curriculum.assert_called_once_with(force_update=True)
 
 
-# --- publish_squirrel_metadata ---
-
-@patch("zombie_squirrel.sync.TREE")
-def test_plant_called_with_squirrel_json_key(mock_tree):
-    mock_tree.get_location.return_value = "s3://bucket/path"
-    publish_squirrel_metadata()
-    mock_tree.plant.assert_called_once()
-    assert mock_tree.plant.call_args[0][0] == "squirrel.json"
+# --- publish_cache_registry ---
 
 
-@patch("zombie_squirrel.sync.TREE")
-def test_published_json_contains_nine_acorns(mock_tree):
-    mock_tree.get_location.return_value = "s3://bucket/path"
-    publish_squirrel_metadata()
-    payload = json.loads(mock_tree.plant.call_args[0][1])
-    assert "acorns" in payload
-    assert len(payload["acorns"]) == 13
+@patch("biodata_cache.sync.BACKEND")
+def test_plant_called_with_squirrel_json_key(mock_backend):
+    mock_backend.get_location.return_value = "s3://bucket/path"
+    publish_cache_registry()
+    mock_backend.put_json.assert_called_once()
+    assert mock_backend.put_json.call_args[0][0] == "cache_registry.json"
 
 
-@patch("zombie_squirrel.sync.TREE")
-def test_published_json_acorn_names(mock_tree):
-    mock_tree.get_location.return_value = "s3://bucket/path"
-    publish_squirrel_metadata()
-    payload = json.loads(mock_tree.plant.call_args[0][1])
-    names = {a["name"] for a in payload["acorns"]}
-    for expected in ("unique_project_names", "unique_subject_ids", "unique_genotypes",
-                     "asset_basics", "source_data", "quality_control", "assets_smartspim",
-                     "metadata_upgrade", "platform_fib", "platform_qc"):
+@patch("biodata_cache.sync.BACKEND")
+def test_published_json_contains_nine_tables(mock_backend):
+    mock_backend.get_location.return_value = "s3://bucket/path"
+    publish_cache_registry()
+    payload = json.loads(mock_backend.put_json.call_args[0][1])
+    assert "tables" in payload
+    assert len(payload["tables"]) == 13
+
+
+@patch("biodata_cache.sync.BACKEND")
+def test_published_json_table_names(mock_backend):
+    mock_backend.get_location.return_value = "s3://bucket/path"
+    publish_cache_registry()
+    payload = json.loads(mock_backend.put_json.call_args[0][1])
+    names = {a["name"] for a in payload["tables"]}
+    for expected in (
+        "unique_project_names",
+        "unique_subject_ids",
+        "unique_genotypes",
+        "asset_basics",
+        "source_data",
+        "quality_control",
+        "assets_smartspim",
+        "metadata_upgrade",
+        "platform_fib",
+        "platform_qc",
+    ):
         assert expected in names
 
 
-@patch("zombie_squirrel.sync.TREE")
-def test_qc_acorn_is_partitioned(mock_tree):
-    mock_tree.get_location.return_value = "s3://bucket/path"
-    publish_squirrel_metadata()
-    payload = json.loads(mock_tree.plant.call_args[0][1])
-    qc = next(a for a in payload["acorns"] if a["name"] == "quality_control")
+@patch("biodata_cache.sync.BACKEND")
+def test_qc_table_fn_is_partitioned(mock_backend):
+    mock_backend.get_location.return_value = "s3://bucket/path"
+    publish_cache_registry()
+    payload = json.loads(mock_backend.put_json.call_args[0][1])
+    qc = next(a for a in payload["tables"] if a["name"] == "quality_control")
     assert qc["partitioned"] is True
     assert qc["partition_key"] == "subject_id"
     assert qc["type"] == "asset"
 
 
-@patch("zombie_squirrel.sync.TREE")
-def test_non_qc_acorns_are_metadata_type(mock_tree):
-    mock_tree.get_location.return_value = "s3://bucket/path"
-    publish_squirrel_metadata()
-    payload = json.loads(mock_tree.plant.call_args[0][1])
+@patch("biodata_cache.sync.BACKEND")
+def test_non_qc_table_fns_are_metadata_type(mock_backend):
+    mock_backend.get_location.return_value = "s3://bucket/path"
+    publish_cache_registry()
+    payload = json.loads(mock_backend.put_json.call_args[0][1])
     non_metadata_names = {"quality_control", "behavior_curriculum", "platform_qc"}
-    for acorn in payload["acorns"]:
-        if acorn["name"] not in non_metadata_names:
-            assert acorn["type"] == "metadata"
-            assert acorn["partitioned"] is False
+    for cache_table in payload["tables"]:
+        if cache_table["name"] not in non_metadata_names:
+            assert cache_table["type"] == "metadata"
+            assert cache_table["partitioned"] is False
 
 
-@patch("zombie_squirrel.sync.TREE")
-def test_get_location_called_for_each_acorn(mock_tree):
-    mock_tree.get_location.return_value = "s3://bucket/path"
-    publish_squirrel_metadata()
-    assert mock_tree.get_location.call_count == 13
+@patch("biodata_cache.sync.BACKEND")
+def test_get_location_called_for_each_table(mock_backend):
+    mock_backend.get_location.return_value = "s3://bucket/path"
+    publish_cache_registry()
+    assert mock_backend.get_location.call_count == 13
 
 
-@patch("zombie_squirrel.sync.TREE")
-def test_qc_location_uses_partitioned_flag(mock_tree):
-    mock_tree.get_location.return_value = "s3://bucket/path"
-    publish_squirrel_metadata()
-    assert call("qc", partitioned=True) in mock_tree.get_location.call_args_list
+@patch("biodata_cache.sync.BACKEND")
+def test_qc_location_uses_partitioned_flag(mock_backend):
+    mock_backend.get_location.return_value = "s3://bucket/path"
+    publish_cache_registry()
+    assert call("qc", partitioned=True) in mock_backend.get_location.call_args_list
 
 
-@patch("zombie_squirrel.sync.TREE")
-def test_acorns_have_columns(mock_tree):
-    mock_tree.get_location.return_value = "s3://bucket/path"
-    publish_squirrel_metadata()
-    payload = json.loads(mock_tree.plant.call_args[0][1])
-    for acorn in payload["acorns"]:
-        assert isinstance(acorn["columns"], list)
-        assert len(acorn["columns"]) > 0
+@patch("biodata_cache.sync.BACKEND")
+def test_tables_have_columns(mock_backend):
+    mock_backend.get_location.return_value = "s3://bucket/path"
+    publish_cache_registry()
+    payload = json.loads(mock_backend.put_json.call_args[0][1])
+    for cache_table in payload["tables"]:
+        assert isinstance(cache_table["columns"], list)
+        assert len(cache_table["columns"]) > 0
 
 
-@patch("zombie_squirrel.sync.TREE")
-@patch("zombie_squirrel.sync.ACORN_REGISTRY")
-def test_hide_acorns_calls_all_acorns(mock_registry, mock_tree):
-    mock_upn, mock_usi, mock_ugt, mock_d2r, mock_r2d, mock_qc, mock_smartspim, mock_fib = (MagicMock() for _ in range(8))
+@patch("biodata_cache.sync.BACKEND")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
+def test_update_all_tables_calls_all_tables(mock_registry, mock_backend):
+    mock_upn, mock_usi, mock_ugt, mock_d2r, mock_r2d, mock_qc, mock_smartspim, mock_fib = (
+        MagicMock() for _ in range(8)
+    )
     mock_basics = MagicMock(return_value=pd.DataFrame({"subject_id": ["subject1", "subject2"]}))
     mock_registry.__getitem__.side_effect = lambda x: {
         "unique_project_names": mock_upn,
@@ -293,9 +306,9 @@ def test_hide_acorns_calls_all_acorns(mock_registry, mock_tree):
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
     }[x]
-    mock_tree.get_location.return_value = "s3://test-bucket/test"
+    mock_backend.get_location.return_value = "s3://test-bucket/test"
 
-    hide_acorns()
+    update_all_tables()
 
     mock_upn.assert_called_once_with(force_update=True)
     mock_usi.assert_called_once_with(force_update=True)
@@ -308,9 +321,9 @@ def test_hide_acorns_calls_all_acorns(mock_registry, mock_tree):
     mock_fib.assert_called_once_with(force_update=True)
 
 
-@patch("zombie_squirrel.sync.TREE")
-@patch("zombie_squirrel.sync.ACORN_REGISTRY")
-def test_hide_acorns_empty_registry(mock_registry, mock_tree):
+@patch("biodata_cache.sync.BACKEND")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
+def test_update_all_tables_empty_registry(mock_registry, mock_backend):
     mock_upn, mock_usi, mock_ugt, mock_d2r, mock_r2d, mock_qc = (MagicMock() for _ in range(6))
     mock_basics = MagicMock(return_value=pd.DataFrame({"subject_id": []}))
     mock_registry.__getitem__.side_effect = lambda x: {
@@ -329,9 +342,9 @@ def test_hide_acorns_empty_registry(mock_registry, mock_tree):
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
     }[x]
-    mock_tree.get_location.return_value = "s3://test-bucket/test"
+    mock_backend.get_location.return_value = "s3://test-bucket/test"
 
-    hide_acorns()
+    update_all_tables()
 
     mock_upn.assert_called_once_with(force_update=True)
     mock_usi.assert_called_once_with(force_update=True)
@@ -341,9 +354,9 @@ def test_hide_acorns_empty_registry(mock_registry, mock_tree):
     mock_qc.assert_not_called()
 
 
-@patch("zombie_squirrel.sync.TREE")
-@patch("zombie_squirrel.sync.ACORN_REGISTRY")
-def test_hide_acorns_single_acorn(mock_registry, mock_tree):
+@patch("biodata_cache.sync.BACKEND")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
+def test_update_all_tables_single_table(mock_registry, mock_backend):
     mock_basics = MagicMock(return_value=pd.DataFrame({"subject_id": ["subject1"]}))
     mock_qc = MagicMock()
     mock_registry.__getitem__.side_effect = lambda x: {
@@ -362,16 +375,16 @@ def test_hide_acorns_single_acorn(mock_registry, mock_tree):
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
     }[x]
-    mock_tree.get_location.return_value = "s3://test-bucket/test"
+    mock_backend.get_location.return_value = "s3://test-bucket/test"
 
-    hide_acorns()
+    update_all_tables()
 
     mock_qc.assert_called_once_with(subject_id="subject1", force_update=True)
 
 
-@patch("zombie_squirrel.sync.TREE")
-@patch("zombie_squirrel.sync.ACORN_REGISTRY")
-def test_hide_acorns_acorn_order_independent(mock_registry, mock_tree):
+@patch("biodata_cache.sync.BACKEND")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
+def test_update_all_tables_order_independent(mock_registry, mock_backend):
     mock_basics = MagicMock(return_value=pd.DataFrame({"subject_id": ["sub1", "sub2", "sub3", "sub4", "sub5"]}))
     mock_qc = MagicMock()
     mock_registry.__getitem__.side_effect = lambda x: {
@@ -390,17 +403,17 @@ def test_hide_acorns_acorn_order_independent(mock_registry, mock_tree):
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
     }[x]
-    mock_tree.get_location.return_value = "s3://test-bucket/test"
+    mock_backend.get_location.return_value = "s3://test-bucket/test"
 
-    hide_acorns()
+    update_all_tables()
 
     assert mock_qc.call_count == 5
     for sub_id in ["sub1", "sub2", "sub3", "sub4", "sub5"]:
         mock_qc.assert_any_call(subject_id=sub_id, force_update=True)
 
 
-@patch("zombie_squirrel.sync.ACORN_REGISTRY")
-def test_hide_acorns_propagates_exceptions(mock_registry):
+@patch("biodata_cache.sync.TABLE_REGISTRY")
+def test_update_all_tables_propagates_exceptions(mock_registry):
     mock_upn = MagicMock(side_effect=Exception("Update failed"))
     mock_registry.__getitem__.side_effect = lambda x: {
         "unique_project_names": mock_upn,
@@ -420,6 +433,6 @@ def test_hide_acorns_propagates_exceptions(mock_registry):
     }[x]
 
     with pytest.raises(Exception, match="Update failed"):
-        hide_acorns()
+        update_all_tables()
 
     mock_upn.assert_called_once_with(force_update=True)

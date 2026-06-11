@@ -3,8 +3,8 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "zombie-squirrel"
-description = "Generated from aind-library-template"
+name = "biodata-cache"
+description = "Caching and synchronization for AIND metadata."
 license = {text = "MIT"}
 requires-python = ">=3.10,<3.14"
 authors = [
@@ -37,7 +37,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.dynamic]
-version = {attr = "zombie_squirrel.__version__"}
+version = {attr = "biodata_cache.__version__"}
 
 [tool.ruff]
 line-length = 120
@@ -76,7 +76,7 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 omit = ["*__init__*"]
-source = ["zombie_squirrel", "tests"]
+source = ["biodata_cache", "tests"]
 
 [tool.coverage.report]
 exclude_lines = [

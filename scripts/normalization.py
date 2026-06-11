@@ -25,16 +25,13 @@ removed.
 """
 
 import re
-from typing import Optional
 
 # Mirror of INSTRUMENT_ID_REGEX in web/src/lib/utils.js.
 # Group 1 captures the <name> segment.
-_INSTRUMENT_ID_RE = re.compile(
-    r'^[^_-]+[_-](.+)_(\d{8}|\d{4}-\d{2}-\d{2}|2[3-6]\d{4})$'
-)
+_INSTRUMENT_ID_RE = re.compile(r"^[^_-]+[_-](.+)_(\d{8}|\d{4}-\d{2}-\d{2}|2[3-6]\d{4})$")
 
 
-def normalize_instrument_id(instrument_id: Optional[str]) -> str:
+def normalize_instrument_id(instrument_id: str | None) -> str:
     """
     Normalize a raw instrument_id to its canonical short name.
 
@@ -62,6 +59,7 @@ def normalize_instrument_id(instrument_id: Optional[str]) -> str:
 # ---------------------------------------------------------------------------
 # Experimenter-name normalisation
 # ---------------------------------------------------------------------------
+
 
 def normalize_name(name: str) -> str:
     """
@@ -103,7 +101,7 @@ def _merge_key(display_name: str) -> str:
     return display_name.lower().replace(" ", "")
 
 
-def parse_experimenters(val: Optional[str]) -> list:
+def parse_experimenters(val: str | None) -> list:
     """
     Parse a comma-separated experimenter field into a deduplicated list of
     normalized display names.

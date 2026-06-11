@@ -3,7 +3,7 @@
 Tests that column metadata functions can retrieve column information from S3.
 """
 
-from zombie_squirrel import qc_columns, unique_project_names_columns
+from biodata_cache import qc_columns, unique_project_names_columns
 
 
 def test_unique_project_names_columns():

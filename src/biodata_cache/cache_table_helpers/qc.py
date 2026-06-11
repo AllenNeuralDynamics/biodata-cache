@@ -1,0 +1,259 @@
+"""Quality control data cache table."""
+
+import logging
+from datetime import datetime
+
+import pandas as pd
+from aind_data_access_api.document_db import MetadataDbClient
+
+import biodata_cache.registry as registry
+from biodata_cache.models import Column
+from biodata_cache.utils import (
+    CacheLogMessage,
+    setup_logging,
+)
+
+QC_METRIC_FIELDS = [
+    "name",
+    "modality",
+    "stage",
+    "value",
+    "status_history",
+]
+
+
+@registry.register_table(registry.NAMES["qc"])
+def qc(
+    subject_id: str,
+    asset_names: str | list[str] | None = None,
+    force_update: bool = False,
+    lazy: bool = False,
+) -> pd.DataFrame | str:
+    """Fetch quality control metrics for assets belonging to a subject.
+
+    Returns a DataFrame with columns from the quality_control metrics
+    including: name, stage, object_type, modality, value, status,
+    status_history, asset_name, subject_id, and timestamp. Special handling:
+    - modality: extracts the "abbreviation" field from the dict
+    - status_history: takes the last element and extracts the "status" field
+    - value: if the stored value is a dict value["value"] is extracted
+    Timestamp is the unix timestamp (seconds since epoch) from
+    acquisition.acquisition_start_time.
+
+    Curation metrics are skipped
+
+    Data is cached per subject_id. All assets for the subject are stored
+    in cache, but can be filtered using the asset_names parameter.
+
+    Args:
+        subject_id: Subject ID to fetch QC data for (from subject.subject_id field).
+        asset_names: Optional asset name or list of asset names to filter to.
+                    If None, returns QC data for all assets of the subject.
+        force_update: If True, bypass cache and fetch fresh data from database.
+        lazy: If True, return the S3 path to the parquet file instead of loading the DataFrame.
+              Default False. Path format is suitable for use with DuckDB.
+
+    Returns:
+        DataFrame with quality control metrics for the subject's asset(s), or
+        string path to the S3 parquet file if lazy=True.
+
+    Raises:
+        ValueError: If requested asset_names are not found in the subject's cache.
+
+    """
+    cache_key = f"qc/{subject_id}"
+
+    if lazy:
+        if force_update:
+            _fetch_subject_qc(subject_id)
+        return registry.BACKEND.get_location(cache_key)
+
+    df = registry.BACKEND.read(cache_key)
+
+    if df.empty and not force_update:
+        logging.error(
+            CacheLogMessage(
+                backend=registry.BACKEND.__class__.__name__,
+                table=registry.NAMES["qc"],
+                message=f"Cache is empty for subject {subject_id}. Use force_update=True to fetch data from database.",
+            ).to_json()
+        )
+
+    if force_update:
+        df = _fetch_subject_qc(subject_id)
+
+    if asset_names is not None:
+        df = _filter_by_asset_names(df, asset_names, subject_id)
+
+    return df
+
+
+def _fetch_subject_qc(subject_id: str) -> pd.DataFrame:
+    """Fetch QC data for a subject from the database and cache it."""
+    setup_logging()
+    cache_key = f"qc/{subject_id}"
+
+    logging.info(
+        CacheLogMessage(
+            backend=registry.BACKEND.__class__.__name__,
+            table=registry.NAMES["qc"],
+            message=f"Updating cache for subject {subject_id}",
+        ).to_json()
+    )
+
+    client = MetadataDbClient(
+        host=registry.API_GATEWAY_HOST,
+        version="v2",
+    )
+
+    records = client.retrieve_docdb_records(
+        filter_query={"subject.subject_id": subject_id},
+        projection={
+            "_id": 1,
+            "name": 1,
+            "quality_control": 1,
+            "acquisition.acquisition_start_time": 1,
+            "subject.subject_id": 1,
+        },
+        limit=100,
+    )
+
+    if not records:
+        logging.warning(
+            CacheLogMessage(
+                backend=registry.BACKEND.__class__.__name__,
+                table=registry.NAMES["qc"],
+                message=f"No records found for subject {subject_id}",
+            ).to_json()
+        )
+        return pd.DataFrame()
+
+    all_metrics = []
+    all_tag_statuses = []
+    for record in records:
+        asset_name = record.get("name", "")
+        quality_control = record.get("quality_control", {})
+        acquisition = record.get("acquisition", {})
+        subject = record.get("subject", {})
+
+        subject_id_value = subject.get("subject_id", "")
+
+        acquisition_start_time = acquisition.get("acquisition_start_time", None)
+        timestamp = None
+        if acquisition_start_time:
+            try:
+                timestamp = datetime.fromisoformat(acquisition_start_time.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                timestamp = None
+
+        if not quality_control:
+            continue
+
+        for metric in quality_control.get("metrics", []):
+            if metric.get("object_type", "") == "Curation metric":
+                continue
+
+            metric_data = {}
+            for col in QC_METRIC_FIELDS:
+                value = metric.get(col, None)
+
+                if col == "modality" and isinstance(value, dict):
+                    value = value.get("abbreviation", None)
+                elif col == "status_history" and isinstance(value, list):
+                    value = value[-1].get("status", None) if isinstance(value[-1], dict) else None
+                elif col == "value":
+                    if isinstance(value, dict):
+                        value = "{dict}"
+                    elif value is not None and not isinstance(value, str):
+                        value = str(value)
+
+                if col == "status_history":
+                    metric_data["status"] = value
+                else:
+                    metric_data[col] = value
+            metric_data["asset_name"] = asset_name
+            metric_data["subject_id"] = subject_id_value
+            metric_data["timestamp"] = timestamp
+            all_metrics.append(metric_data)
+
+        status_dict = quality_control.get("status", {})
+        if isinstance(status_dict, dict):
+            for tag, status_value in status_dict.items():
+                all_tag_statuses.append(
+                    {
+                        "tag": tag,
+                        "status": status_value,
+                        "asset_name": asset_name,
+                        "subject_id": subject_id_value,
+                        "timestamp": timestamp,
+                    }
+                )
+
+    if not all_metrics:
+        logging.warning(
+            CacheLogMessage(
+                backend=registry.BACKEND.__class__.__name__,
+                table=registry.NAMES["qc"],
+                message=f"No quality_control metrics found for subject {subject_id}",
+            ).to_json()
+        )
+        return pd.DataFrame()
+
+    df = pd.DataFrame.from_records(all_metrics)
+
+    if "object_type" in df.columns:
+        df = df.drop(columns=["object_type"])
+
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    registry.BACKEND.write(cache_key, df)
+
+    if all_tag_statuses:
+        tag_df = pd.DataFrame.from_records(all_tag_statuses)
+        tag_df["timestamp"] = pd.to_datetime(tag_df["timestamp"], utc=True)
+        registry.BACKEND.write(f"qc_tag_status/{subject_id}", tag_df)
+
+    logging.info(
+        CacheLogMessage(
+            backend=registry.BACKEND.__class__.__name__,
+            table=registry.NAMES["qc"],
+            message=f"Cached QC data for subject {subject_id} ({len(records)} assets, {len(all_metrics)} metrics, {len(all_tag_statuses)} tag statuses)",
+        ).to_json()
+    )
+
+    return df
+
+
+def qc_columns() -> list[Column]:
+    """Return QC cache table column definitions."""
+    return [
+        Column(name="name", description="Metric name"),
+        Column(name="stage", description="Stage: raw, processing, or analysis"),
+        Column(name="modality", description="Modality abbreviation"),
+        Column(name="value", description="Metric value, converted to string if not already a string"),
+        Column(name="status", description="Latest metric status (Pass, Fail, Pending)"),
+        Column(name="asset_name", description="Asset name the metric is associated with"),
+    ]
+
+
+def _filter_by_asset_names(df: pd.DataFrame, asset_names: str | list[str], subject_id: str) -> pd.DataFrame:
+    """Filter QC DataFrame to specific asset names and validate they exist."""
+    if df.empty:
+        return df
+
+    if isinstance(asset_names, str):
+        asset_names = [asset_names]
+
+    available_assets = df["asset_name"].unique().tolist()
+    missing_assets = [name for name in asset_names if name not in available_assets]
+
+    if missing_assets:
+        logging.warning(
+            CacheLogMessage(
+                backend=registry.BACKEND.__class__.__name__,
+                table=registry.NAMES["qc"],
+                message=f"Requested asset(s) {missing_assets} not found in cache for subject {subject_id}. "
+                f"Available assets: {available_assets}",
+            ).to_json()
+        )
+
+    return df[df["asset_name"].isin(asset_names)].reset_index(drop=True)

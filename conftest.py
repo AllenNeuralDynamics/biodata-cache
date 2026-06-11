@@ -1,5 +1,5 @@
-"""Root conftest: ensure in-memory forest is used during tests."""
+"""Root conftest: ensure in-memory backend is used during tests."""
 
 import os
 
-os.environ["FOREST_TYPE"] = "memory"
+os.environ["BIODATA_CACHE_BACKEND"] = "memory"

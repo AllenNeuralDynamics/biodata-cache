@@ -1,4 +1,4 @@
-"""Setup configuration for zombie-squirrel package."""
+"""Setup configuration for biodata-cache package."""
 
 from setuptools import setup
 

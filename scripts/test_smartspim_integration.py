@@ -1,6 +1,6 @@
-"""Integration test for assets_smartspim acorn.
+"""Integration test for assets_smartspim cache table.
 
-Runs the acorn for a single known stitched SmartSPIM asset and prints the
+Runs the cache table for a single known stitched SmartSPIM asset and prints the
 resulting DataFrame for manual inspection.
 """
 
@@ -8,9 +8,9 @@ import os
 
 import pandas as pd
 
-os.environ["FOREST_TYPE"] = "memory"
+os.environ["BIODATA_CACHE_BACKEND"] = "memory"
 
-from zombie_squirrel.acorn_helpers.platform_smartspim import (  # noqa: E402
+from biodata_cache.cache_table_helpers.platform_smartspim import (  # noqa: E402
     _build_rows,
     _fetch_asset_metadata,
 )

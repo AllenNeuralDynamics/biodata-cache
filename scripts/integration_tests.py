@@ -1,6 +1,6 @@
-"""Integration tests for zombie-squirrel package using Redshift backend.
+"""Integration tests for biodata-cache package using Redshift backend.
 
-Tests that verify squirrel functions work correctly with the Redshift
+Tests that verify cache table functions work correctly with the Redshift
 cache backend.
 """
 
@@ -8,7 +8,7 @@ import time
 
 import pandas as pd
 
-from zombie_squirrel import (
+from biodata_cache import (
     asset_basics,
     raw_to_derived,
     source_data,

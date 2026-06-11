@@ -3,12 +3,12 @@
 import os
 import unittest
 
-os.environ["FOREST_TYPE"] = "s3"
+os.environ["BIODATA_CACHE_BACKEND"] = "s3"
 
 import duckdb
 
-from zombie_squirrel import qc
-from zombie_squirrel.acorns import TREE
+from biodata_cache import qc
+from biodata_cache.registry import BACKEND
 
 SUBJECT_ID = "818323"
 BUCKET = "allen-data-views"
@@ -22,7 +22,7 @@ class TestQCTimestampProof(unittest.TestCase):
         print(f"\nWriting QC data for subject {SUBJECT_ID} to S3...", flush=True)
         qc(subject_id=SUBJECT_ID, force_update=True)
 
-        s3_path = TREE.get_location(f"qc/{SUBJECT_ID}")
+        s3_path = BACKEND.get_location(f"qc/{SUBJECT_ID}")
         print(f"Reading schema from {s3_path}...", flush=True)
 
         rows = duckdb.query(f"DESCRIBE SELECT * FROM read_parquet('{s3_path}')").fetchall()
