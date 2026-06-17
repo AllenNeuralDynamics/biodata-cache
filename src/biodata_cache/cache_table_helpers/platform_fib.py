@@ -50,7 +50,7 @@ def _extract_fiber_channel_entries(record: dict, fiber_names: set[str]) -> list[
     connections, and handles space/underscore variants like 'Fiber 0' vs 'Fiber_0').
     The returned fiber is the canonical name from fiber_names (underscore form).
     """
-    norm_to_fiber = {_normalize(f): f for f in fiber_names}
+    norm_to_fiber = {_normalize(f): _normalize(f) for f in fiber_names}
     entries: list[tuple[str, str, str, str]] = []
     for stream in (record.get("acquisition") or {}).get("data_streams") or []:
         patch_cord_to_fiber: dict[str, str] = {}
@@ -105,7 +105,7 @@ def _build_fib_rows(records: list[dict]) -> list[dict]:
     rows = []
     for record in records:
         asset_name = record.get("name")
-        fiber_structure = _extract_fiber_structure_map(record)
+        fiber_structure = {_normalize(k): v for k, v in _extract_fiber_structure_map(record).items()}
         entries = _extract_fiber_channel_entries(record, set(fiber_structure.keys()))
 
         for fiber, patch_cord, channel, intended_measurement in entries:
