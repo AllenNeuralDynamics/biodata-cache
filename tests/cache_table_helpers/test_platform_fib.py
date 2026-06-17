@@ -151,8 +151,8 @@ def test_extract_fiber_channel_entries_resolves_all_fibers():
     entries = _extract_fiber_channel_entries(SYNTHETIC_RECORD, fiber_names)
     fibers = [e[0] for e in entries]
     assert "missing" not in fibers
-    assert "Fiber_0" in fibers
-    assert "Fiber_1" in fibers
+    assert "Fiber 0" in fibers
+    assert "Fiber 1" in fibers
 
 
 def test_extract_fiber_channel_entries_space_underscore_mismatch():
@@ -161,7 +161,7 @@ def test_extract_fiber_channel_entries_space_underscore_mismatch():
     entries = _extract_fiber_channel_entries(SYNTHETIC_RECORD, fiber_names)
     cord0 = [e for e in entries if e[1] == "Patch Cord 0"]
     assert len(cord0) > 0
-    assert cord0[0][0] == "Fiber_0"
+    assert cord0[0][0] == "Fiber 0"
 
 
 def test_extract_fiber_channel_entries_detector_connection_does_not_clobber():
@@ -170,7 +170,7 @@ def test_extract_fiber_channel_entries_detector_connection_does_not_clobber():
     entries = _extract_fiber_channel_entries(SYNTHETIC_RECORD, fiber_names)
     for fiber, patch_cord, _, _ in entries:
         if patch_cord == "Patch Cord 0":
-            assert fiber == "Fiber_0"
+            assert fiber == "Fiber 0"
 
 
 def test_extract_fiber_channel_entries_returns_all_channels():
@@ -236,7 +236,7 @@ def test_extract_fiber_channel_entries_real_example(real_record):
     assert len(entries) > 0
     fibers = {e[0] for e in entries}
     assert "missing" not in fibers
-    assert "Fiber_0" in fibers
+    assert "Fiber 0" in fibers
 
 
 # --- _build_fib_rows ---
@@ -263,8 +263,8 @@ def test_build_fib_rows_keys():
 def test_build_fib_rows_targeted_structure():
     rows = _build_fib_rows([SYNTHETIC_RECORD])
     by_fiber = {r["fiber"]: r["targeted_structure"] for r in rows}
-    assert by_fiber["Fiber_0"] == "ACB"
-    assert by_fiber["Fiber_1"] == "PIR"
+    assert by_fiber["Fiber 0"] == "ACB"
+    assert by_fiber["Fiber 1"] == "PIR"
 
 
 def test_build_fib_rows_empty():
