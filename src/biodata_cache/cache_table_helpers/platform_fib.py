@@ -39,7 +39,7 @@ def _fetch_fib_records(asset_names: list[str]) -> list[dict]:
 
 def _normalize(name: str) -> str:
     """Normalize fiber name for comparison: replace spaces with underscores."""
-    return name.replace(" ", "_")
+    return name.replace("_", " ")
 
 
 def _extract_fiber_channel_entries(record: dict, fiber_names: set[str]) -> list[tuple[str, str, str, str]]:
