@@ -30,13 +30,15 @@ def test_update_all_tables_fallback_sequential_on_concurrent_failure(mock_regist
         "asset_basics": mock_basics,
         "source_data": mock_d2r,
         "quality_control": mock_qc,
-        "assets_smartspim": MagicMock(),
+        "platform_smartspim": MagicMock(),
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
         "foraging_sessions": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
+        "time_to_qc": MagicMock(),
+        "scientist_rl_fib": MagicMock(),
     }.__getitem__
 
     failed_future = MagicMock()

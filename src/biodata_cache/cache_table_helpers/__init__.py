@@ -13,6 +13,7 @@ from biodata_cache.cache_table_helpers import (  # noqa: F401
     platform_smartspim,
     qc,
     raw_to_derived,
+    scientist,
     source_data,
     unique_genotypes,
     unique_project_names,

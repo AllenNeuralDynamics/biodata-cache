@@ -12,6 +12,7 @@ from .cache_table_helpers.platform_qc import PLATFORMS, platform_qc_columns
 from .cache_table_helpers.platform_smartspim import assets_smartspim_columns
 from .cache_table_helpers.qc import qc_columns
 from .cache_table_helpers.source_data import source_data_columns
+from .cache_table_helpers.scientist.scientist_rl_fib import scientist_rl_fib_columns
 from .cache_table_helpers.time_to_qc import time_to_qc_columns
 from .cache_table_helpers.unique_genotypes import unique_genotypes_columns
 from .cache_table_helpers.unique_project_names import unique_project_names_columns
@@ -141,6 +142,14 @@ def publish_cache_registry() -> None:
             type=CacheTableType.metadata,
             columns=time_to_qc_columns(),
         ),
+        CacheTable(
+            name=NAMES["scientist_rl_fib"],
+            description="Cohort summary for scientist RL FIB mice: one row per (fiber_targeted_structure, virus) combination",
+            location=BACKEND.get_location(NAMES["scientist_rl_fib"]),
+            partitioned=False,
+            type=CacheTableType.metadata,
+            columns=scientist_rl_fib_columns(),
+        ),
     ]
     registry = CacheRegistry(tables=table_list)
     BACKEND.put_json("cache_registry.json", registry.model_dump_json())
@@ -192,5 +201,6 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
         TABLE_REGISTRY[NAMES["foraging"]](force_update=True)
         TABLE_REGISTRY[NAMES["curriculum"]](force_update=True)
         TABLE_REGISTRY[NAMES["time_to_qc"]](force_update=True)
+        TABLE_REGISTRY[NAMES["scientist_rl_fib"]](force_update=True)
 
     publish_cache_registry()

@@ -18,13 +18,15 @@ def _make_registry(mock_upn, mock_usi, mock_ugt, mock_basics, mock_d2r, mock_r2d
         "source_data": mock_d2r,
         "raw_to_derived": mock_r2d,
         "quality_control": mock_qc,
-        "assets_smartspim": mock_smartspim,
+        "platform_smartspim": mock_smartspim,
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
         "foraging_sessions": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
+        "time_to_qc": MagicMock(),
+        "scientist_rl_fib": MagicMock(),
     }
 
 
@@ -129,12 +131,14 @@ def test_fast_only_skips_slow_tables(mock_registry, mock_publish):
         "source_data": MagicMock(),
         "raw_to_derived": MagicMock(),
         "quality_control": mock_qc,
-        "assets_smartspim": mock_smartspim,
+        "platform_smartspim": mock_smartspim,
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
         "foraging_sessions": mock_foraging,
         "behavior_curriculum": mock_curriculum,
         "platform_qc": MagicMock(),
+        "time_to_qc": MagicMock(),
+        "scientist_rl_fib": MagicMock(),
     }[x]
 
     update_all_tables(fast=True, slow=False)
@@ -170,13 +174,15 @@ def test_slow_only_skips_fast_tables(mock_registry, mock_publish):
         "source_data": mock_d2r,
         "raw_to_derived": MagicMock(),
         "quality_control": mock_qc,
-        "assets_smartspim": mock_smartspim,
+        "platform_smartspim": mock_smartspim,
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": mock_upgrade,
         "platform_fib": mock_fib,
         "foraging_sessions": mock_foraging,
         "behavior_curriculum": mock_curriculum,
         "platform_qc": mock_platform_qc,
+        "time_to_qc": MagicMock(),
+        "scientist_rl_fib": mock_smartspim.__class__(),
     }[x]
 
     update_all_tables(fast=False, slow=True)
@@ -212,7 +218,7 @@ def test_published_json_contains_nine_tables(mock_backend):
     publish_cache_registry()
     payload = json.loads(mock_backend.put_json.call_args[0][1])
     assert "tables" in payload
-    assert len(payload["tables"]) == 13
+    assert len(payload["tables"]) == 15
 
 
 @patch("biodata_cache.sync.BACKEND")
@@ -228,10 +234,11 @@ def test_published_json_table_names(mock_backend):
         "asset_basics",
         "source_data",
         "quality_control",
-        "assets_smartspim",
+        "platform_smartspim",
         "metadata_upgrade",
         "platform_fib",
         "platform_qc",
+        "scientist_rl_fib",
     ):
         assert expected in names
 
@@ -263,7 +270,7 @@ def test_non_qc_table_fns_are_metadata_type(mock_backend):
 def test_get_location_called_for_each_table(mock_backend):
     mock_backend.get_location.return_value = "s3://bucket/path"
     publish_cache_registry()
-    assert mock_backend.get_location.call_count == 13
+    assert mock_backend.get_location.call_count == 15
 
 
 @patch("biodata_cache.sync.BACKEND")
@@ -298,13 +305,15 @@ def test_update_all_tables_calls_all_tables(mock_registry, mock_backend):
         "source_data": mock_d2r,
         "raw_to_derived": mock_r2d,
         "quality_control": mock_qc,
-        "assets_smartspim": mock_smartspim,
+        "platform_smartspim": mock_smartspim,
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": mock_fib,
         "foraging_sessions": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
+        "time_to_qc": MagicMock(),
+        "scientist_rl_fib": MagicMock(),
     }[x]
     mock_backend.get_location.return_value = "s3://test-bucket/test"
 
@@ -334,13 +343,15 @@ def test_update_all_tables_empty_registry(mock_registry, mock_backend):
         "source_data": mock_d2r,
         "raw_to_derived": mock_r2d,
         "quality_control": mock_qc,
-        "assets_smartspim": MagicMock(),
+        "platform_smartspim": MagicMock(),
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
         "foraging_sessions": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
+        "time_to_qc": MagicMock(),
+        "scientist_rl_fib": MagicMock(),
     }[x]
     mock_backend.get_location.return_value = "s3://test-bucket/test"
 
@@ -367,13 +378,15 @@ def test_update_all_tables_single_table(mock_registry, mock_backend):
         "source_data": MagicMock(),
         "raw_to_derived": MagicMock(),
         "quality_control": mock_qc,
-        "assets_smartspim": MagicMock(),
+        "platform_smartspim": MagicMock(),
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
         "foraging_sessions": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
+        "time_to_qc": MagicMock(),
+        "scientist_rl_fib": MagicMock(),
     }[x]
     mock_backend.get_location.return_value = "s3://test-bucket/test"
 
@@ -395,13 +408,15 @@ def test_update_all_tables_order_independent(mock_registry, mock_backend):
         "source_data": MagicMock(),
         "raw_to_derived": MagicMock(),
         "quality_control": mock_qc,
-        "assets_smartspim": MagicMock(),
+        "platform_smartspim": MagicMock(),
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
         "foraging_sessions": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
+        "time_to_qc": MagicMock(),
+        "scientist_rl_fib": MagicMock(),
     }[x]
     mock_backend.get_location.return_value = "s3://test-bucket/test"
 
@@ -423,13 +438,15 @@ def test_update_all_tables_propagates_exceptions(mock_registry):
         "source_data": MagicMock(),
         "raw_to_derived": MagicMock(),
         "quality_control": MagicMock(),
-        "assets_smartspim": MagicMock(),
+        "platform_smartspim": MagicMock(),
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
         "foraging_sessions": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
+        "time_to_qc": MagicMock(),
+        "scientist_rl_fib": MagicMock(),
     }[x]
 
     with pytest.raises(Exception, match="Update failed"):

@@ -20,6 +20,7 @@ from biodata_cache.cache_table_helpers.platform_smartspim import assets_smartspi
 from biodata_cache.cache_table_helpers.qc import qc, qc_columns  # noqa: F401
 from biodata_cache.cache_table_helpers.raw_to_derived import raw_to_derived  # noqa: F401
 from biodata_cache.cache_table_helpers.source_data import source_data  # noqa: F401
+from biodata_cache.cache_table_helpers.scientist.scientist_rl_fib import scientist_rl_fib  # noqa: F401
 from biodata_cache.cache_table_helpers.time_to_qc import time_to_qc  # noqa: F401
 from biodata_cache.cache_table_helpers.unique_genotypes import (  # noqa: F401
     unique_genotypes,
