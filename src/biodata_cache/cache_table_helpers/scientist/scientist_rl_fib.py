@@ -71,7 +71,10 @@ def _extract_coordinates(config: dict) -> str:
         if item.get("object_type") == "Translation":
             t = item.get("translation") or []
             if len(t) >= 4:
-                return f"AP={t[0]}, ML={float(t[1])}, D={t[3]}"
+                ap = t[0] if t[0] is not None else "?"
+                ml = float(t[1]) if t[1] is not None else "?"
+                d = t[3] if t[3] is not None else "?"
+                return f"AP={ap}, ML={ml}, D={d}"
     return "missing"
 
 
