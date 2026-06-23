@@ -60,6 +60,11 @@ class Backend(ABC):
         """Read a JSON string from the storage root under the given key."""
         pass  # pragma: no cover
 
+    @abstractmethod
+    def get_versions_index(self) -> list[str]:
+        """Return the list of all available version folders from cache_versions.json."""
+        pass  # pragma: no cover
+
 
 class S3Backend(Backend):
     """Stores and retrieves caches using AWS S3 with parquet files."""
@@ -187,6 +192,15 @@ class S3Backend(Backend):
         response = self.s3_client.get_object(Bucket=self.bucket, Key=s3_key)
         return response["Body"].read().decode()
 
+    def get_versions_index(self) -> list[str]:  # pragma: no cover
+        """Return the list of all available version folders from the top-level cache_versions.json."""
+        index_key = f"{_CACHE_ROOT}/cache_versions.json"
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket, Key=index_key)
+            return json.loads(response["Body"].read().decode())
+        except Exception:
+            return []
+
     def _read_multiple(self, table_names: list[str]) -> pd.DataFrame:
         """Fetch and merge multiple tables from S3."""
         parquet_paths = []
@@ -282,6 +296,10 @@ class MemoryBackend(Backend):
     def get_json(self, key: str) -> str:
         """Read a JSON string from the versioned in-memory JSON store."""
         return self._json_store.get(f"{_VERSION_FOLDER}/{key}", "{}")
+
+    def get_versions_index(self) -> list[str]:
+        """Return the list of all available version folders from the in-memory index."""
+        return json.loads(self._json_store.get("cache_versions.json", "[]"))
 
     def _read_multiple(self, table_names: list[str]) -> pd.DataFrame:
         """Fetch and merge multiple tables from memory."""

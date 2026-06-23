@@ -31,4 +31,4 @@ from biodata_cache.cache_table_helpers.unique_project_names import (  # noqa: F4
 from biodata_cache.cache_table_helpers.unique_subject_ids import (  # noqa: F401
     unique_subject_ids,
 )
-from biodata_cache.utils import get_cache_registry  # noqa: F401
+from biodata_cache.utils import get_cache_registry, get_cache_versions  # noqa: F401

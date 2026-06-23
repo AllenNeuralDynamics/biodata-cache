@@ -43,6 +43,13 @@ def get_cache_registry():
     return CacheRegistry.model_validate_json(data)
 
 
+def get_cache_versions() -> list[str]:
+    """Return the list of all available cache version folders."""
+    import biodata_cache.registry as registry
+
+    return registry.BACKEND.get_versions_index()
+
+
 _INSTRUMENT_ID_RE = re.compile(r"^[^_-]+[_-](.+)_(\d{8}|\d{4}-\d{2}-\d{2}|2[3-6]\d{4})$")
 
 
