@@ -4,15 +4,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .cache_table_helpers.asset_basics import asset_basics_columns
 from .cache_table_helpers.behavior_curriculum import behavior_curriculum_columns
-from .cache_table_helpers.foraging_sessions import foraging_sessions_columns
 from .cache_table_helpers.metadata_upgrade import metadata_upgrade_columns
+from .cache_table_helpers.platform_df import (
+    platform_dynamic_foraging_events_columns,
+    platform_dynamic_foraging_sessions_columns,
+    platform_dynamic_foraging_trials_columns,
+)
 from .cache_table_helpers.platform_exaspim import platform_exaspim_columns
 from .cache_table_helpers.platform_fib import platform_fib_columns
 from .cache_table_helpers.platform_qc import PLATFORMS, platform_qc_columns
 from .cache_table_helpers.platform_smartspim import assets_smartspim_columns
 from .cache_table_helpers.qc import qc_columns
-from .cache_table_helpers.source_data import source_data_columns
 from .cache_table_helpers.scientist.scientist_rl_fib import scientist_rl_fib_columns
+from .cache_table_helpers.source_data import source_data_columns
 from .cache_table_helpers.time_to_qc import time_to_qc_columns
 from .cache_table_helpers.unique_genotypes import unique_genotypes_columns
 from .cache_table_helpers.unique_project_names import unique_project_names_columns
@@ -110,12 +114,30 @@ def publish_cache_registry() -> None:
             columns=platform_fib_columns(),
         ),
         CacheTable(
-            name=NAMES["foraging"],
-            description="Foraging behavior sessions with key performance metrics, one row per session",
-            location=BACKEND.get_location(NAMES["foraging"]),
+            name=NAMES["df_sessions"],
+            description="Dynamic foraging session table (one row per session); mirrors upstream aind-dynamic-foraging-database",
+            location=BACKEND.get_location(NAMES["df_sessions"]),
             partitioned=False,
-            type=CacheTableType.metadata,
-            columns=foraging_sessions_columns(),
+            type=CacheTableType.platform,
+            columns=platform_dynamic_foraging_sessions_columns(),
+        ),
+        CacheTable(
+            name=NAMES["df_trials"],
+            description="Dynamic foraging trial table (one row per trial), partitioned by subject_id; mirrors upstream aind-dynamic-foraging-database",
+            location=BACKEND.get_location(NAMES["df_trials"], partitioned=True),
+            partitioned=True,
+            partition_key="subject_id",
+            type=CacheTableType.platform,
+            columns=platform_dynamic_foraging_trials_columns(),
+        ),
+        CacheTable(
+            name=NAMES["df_events"],
+            description="Dynamic foraging event table (one row per behavioral event), partitioned by subject_id; mirrors upstream aind-dynamic-foraging-database",
+            location=BACKEND.get_location(NAMES["df_events"], partitioned=True),
+            partitioned=True,
+            partition_key="subject_id",
+            type=CacheTableType.platform,
+            columns=platform_dynamic_foraging_events_columns(),
         ),
         CacheTable(
             name=NAMES["curriculum"],
@@ -165,7 +187,7 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
 
     Args:
         fast: If True, run fast DocDB-only cache tables (upn, usi, ugt, d2r, upgrade, fib, platform_qc).
-        slow: If True, run slow per-subject/S3 cache tables (qc, smartspim, foraging, curriculum).
+        slow: If True, run slow per-subject/S3 cache tables (qc, smartspim, exaspim, df_sessions/df_trials/df_events, curriculum, time_to_qc, scientist_rl_fib).
     """
     df_basics = TABLE_REGISTRY[NAMES["basics"]](force_update=True)
 
@@ -198,7 +220,27 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
 
         TABLE_REGISTRY[NAMES["smartspim"]](force_update=True)
         TABLE_REGISTRY[NAMES["exaspim"]](force_update=True)
-        TABLE_REGISTRY[NAMES["foraging"]](force_update=True)
+        df_sessions = TABLE_REGISTRY[NAMES["df_sessions"]](force_update=True)
+        df_subject_ids = df_sessions["subject_id"].dropna().unique() if "subject_id" in df_sessions.columns else []
+        if len(df_subject_ids) > 0:
+            trials_fn = TABLE_REGISTRY[NAMES["df_trials"]]
+            events_fn = TABLE_REGISTRY[NAMES["df_events"]]
+            try:
+                with ThreadPoolExecutor() as executor:
+                    futures = [
+                        executor.submit(trials_fn, subject_id=subject_id, force_update=True)
+                        for subject_id in df_subject_ids
+                    ]
+                    futures += [
+                        executor.submit(events_fn, subject_id=subject_id, force_update=True)
+                        for subject_id in df_subject_ids
+                    ]
+                    for future in as_completed(futures):
+                        future.result()
+            except Exception:
+                for subject_id in df_subject_ids:
+                    trials_fn(subject_id=subject_id, force_update=True)
+                    events_fn(subject_id=subject_id, force_update=True)
         TABLE_REGISTRY[NAMES["curriculum"]](force_update=True)
         TABLE_REGISTRY[NAMES["time_to_qc"]](force_update=True)
         TABLE_REGISTRY[NAMES["scientist_rl_fib"]](force_update=True)

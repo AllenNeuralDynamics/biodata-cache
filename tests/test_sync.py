@@ -22,7 +22,9 @@ def _make_registry(mock_upn, mock_usi, mock_ugt, mock_basics, mock_d2r, mock_r2d
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
-        "foraging_sessions": MagicMock(),
+        "platform_dynamic_foraging_sessions": MagicMock(return_value=pd.DataFrame({"subject_id": []})),
+        "platform_dynamic_foraging_trials": MagicMock(),
+        "platform_dynamic_foraging_events": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
         "time_to_qc": MagicMock(),
@@ -121,7 +123,7 @@ def test_fast_only_skips_slow_tables(mock_registry, mock_publish):
     mock_basics = MagicMock(return_value=df_basics)
     mock_qc = MagicMock()
     mock_smartspim = MagicMock()
-    mock_foraging = MagicMock()
+    mock_df_sessions = MagicMock(return_value=pd.DataFrame({"subject_id": []}))
     mock_curriculum = MagicMock()
     mock_registry.__getitem__.side_effect = lambda x: {
         "unique_project_names": MagicMock(),
@@ -134,7 +136,9 @@ def test_fast_only_skips_slow_tables(mock_registry, mock_publish):
         "platform_smartspim": mock_smartspim,
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
-        "foraging_sessions": mock_foraging,
+        "platform_dynamic_foraging_sessions": mock_df_sessions,
+        "platform_dynamic_foraging_trials": MagicMock(),
+        "platform_dynamic_foraging_events": MagicMock(),
         "behavior_curriculum": mock_curriculum,
         "platform_qc": MagicMock(),
         "time_to_qc": MagicMock(),
@@ -146,7 +150,7 @@ def test_fast_only_skips_slow_tables(mock_registry, mock_publish):
     mock_basics.assert_called_once_with(force_update=True)
     mock_qc.assert_not_called()
     mock_smartspim.assert_not_called()
-    mock_foraging.assert_not_called()
+    mock_df_sessions.assert_not_called()
     mock_curriculum.assert_not_called()
 
 
@@ -163,7 +167,7 @@ def test_slow_only_skips_fast_tables(mock_registry, mock_publish):
     mock_fib = MagicMock()
     mock_qc = MagicMock()
     mock_smartspim = MagicMock()
-    mock_foraging = MagicMock()
+    mock_df_sessions = MagicMock(return_value=pd.DataFrame({"subject_id": []}))
     mock_curriculum = MagicMock()
     mock_platform_qc = MagicMock()
     mock_registry.__getitem__.side_effect = lambda x: {
@@ -178,7 +182,9 @@ def test_slow_only_skips_fast_tables(mock_registry, mock_publish):
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": mock_upgrade,
         "platform_fib": mock_fib,
-        "foraging_sessions": mock_foraging,
+        "platform_dynamic_foraging_sessions": mock_df_sessions,
+        "platform_dynamic_foraging_trials": MagicMock(),
+        "platform_dynamic_foraging_events": MagicMock(),
         "behavior_curriculum": mock_curriculum,
         "platform_qc": mock_platform_qc,
         "time_to_qc": MagicMock(),
@@ -197,7 +203,7 @@ def test_slow_only_skips_fast_tables(mock_registry, mock_publish):
     mock_platform_qc.assert_not_called()
     mock_qc.assert_called_once_with(subject_id="sub1", force_update=True)
     mock_smartspim.assert_called_once_with(force_update=True)
-    mock_foraging.assert_called_once_with(force_update=True)
+    mock_df_sessions.assert_called_once_with(force_update=True)
     mock_curriculum.assert_called_once_with(force_update=True)
 
 
@@ -218,7 +224,7 @@ def test_published_json_contains_nine_tables(mock_backend):
     publish_cache_registry()
     payload = json.loads(mock_backend.put_json.call_args[0][1])
     assert "tables" in payload
-    assert len(payload["tables"]) == 15
+    assert len(payload["tables"]) == 17
 
 
 @patch("biodata_cache.sync.BACKEND")
@@ -238,6 +244,9 @@ def test_published_json_table_names(mock_backend):
         "metadata_upgrade",
         "platform_fib",
         "platform_qc",
+        "platform_dynamic_foraging_sessions",
+        "platform_dynamic_foraging_trials",
+        "platform_dynamic_foraging_events",
         "scientist_rl_fib",
     ):
         assert expected in names
@@ -259,7 +268,14 @@ def test_non_qc_table_fns_are_metadata_type(mock_backend):
     mock_backend.get_location.return_value = "s3://bucket/path"
     publish_cache_registry()
     payload = json.loads(mock_backend.put_json.call_args[0][1])
-    non_metadata_names = {"quality_control", "behavior_curriculum", "platform_qc"}
+    non_metadata_names = {
+        "quality_control",
+        "behavior_curriculum",
+        "platform_qc",
+        "platform_dynamic_foraging_sessions",
+        "platform_dynamic_foraging_trials",
+        "platform_dynamic_foraging_events",
+    }
     for cache_table in payload["tables"]:
         if cache_table["name"] not in non_metadata_names:
             assert cache_table["type"] == "metadata"
@@ -270,7 +286,7 @@ def test_non_qc_table_fns_are_metadata_type(mock_backend):
 def test_get_location_called_for_each_table(mock_backend):
     mock_backend.get_location.return_value = "s3://bucket/path"
     publish_cache_registry()
-    assert mock_backend.get_location.call_count == 15
+    assert mock_backend.get_location.call_count == 17
 
 
 @patch("biodata_cache.sync.BACKEND")
@@ -309,7 +325,9 @@ def test_update_all_tables_calls_all_tables(mock_registry, mock_backend):
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": mock_fib,
-        "foraging_sessions": MagicMock(),
+        "platform_dynamic_foraging_sessions": MagicMock(return_value=pd.DataFrame({"subject_id": []})),
+        "platform_dynamic_foraging_trials": MagicMock(),
+        "platform_dynamic_foraging_events": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
         "time_to_qc": MagicMock(),
@@ -347,7 +365,9 @@ def test_update_all_tables_empty_registry(mock_registry, mock_backend):
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
-        "foraging_sessions": MagicMock(),
+        "platform_dynamic_foraging_sessions": MagicMock(return_value=pd.DataFrame({"subject_id": []})),
+        "platform_dynamic_foraging_trials": MagicMock(),
+        "platform_dynamic_foraging_events": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
         "time_to_qc": MagicMock(),
@@ -382,7 +402,9 @@ def test_update_all_tables_single_table(mock_registry, mock_backend):
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
-        "foraging_sessions": MagicMock(),
+        "platform_dynamic_foraging_sessions": MagicMock(return_value=pd.DataFrame({"subject_id": []})),
+        "platform_dynamic_foraging_trials": MagicMock(),
+        "platform_dynamic_foraging_events": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
         "time_to_qc": MagicMock(),
@@ -412,7 +434,9 @@ def test_update_all_tables_order_independent(mock_registry, mock_backend):
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
-        "foraging_sessions": MagicMock(),
+        "platform_dynamic_foraging_sessions": MagicMock(return_value=pd.DataFrame({"subject_id": []})),
+        "platform_dynamic_foraging_trials": MagicMock(),
+        "platform_dynamic_foraging_events": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
         "time_to_qc": MagicMock(),
@@ -442,7 +466,9 @@ def test_update_all_tables_propagates_exceptions(mock_registry):
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
-        "foraging_sessions": MagicMock(),
+        "platform_dynamic_foraging_sessions": MagicMock(return_value=pd.DataFrame({"subject_id": []})),
+        "platform_dynamic_foraging_trials": MagicMock(),
+        "platform_dynamic_foraging_events": MagicMock(),
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
         "time_to_qc": MagicMock(),

@@ -18,6 +18,8 @@ HIVE_PARTITION_KEYS = {
     "qc": "subject_id",
     "qc_tag_status": "subject_id",
     "platform_qc": "platform",
+    "platform_dynamic_foraging_trials": "subject_id",
+    "platform_dynamic_foraging_events": "subject_id",
 }
 
 
