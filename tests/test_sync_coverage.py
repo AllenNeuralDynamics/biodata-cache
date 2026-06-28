@@ -34,6 +34,7 @@ def test_update_all_tables_fallback_sequential_on_concurrent_failure(mock_regist
         "platform_exaspim": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
+        "platform_mouselight": MagicMock(),
         "platform_dynamic_foraging_sessions": MagicMock(return_value=pd.DataFrame({"subject_id": []})),
         "platform_dynamic_foraging_trials": MagicMock(),
         "platform_dynamic_foraging_events": MagicMock(),

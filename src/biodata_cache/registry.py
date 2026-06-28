@@ -54,6 +54,7 @@ NAMES = {
     "platform_qc": "platform_qc",
     "time_to_qc": "time_to_qc",
     "scientist_rl_fib": "scientist_rl_fib",
+    "mouselight": "platform_mouselight",
 }
 
 TABLE_REGISTRY: dict[str, Callable[[], Any]] = {}

@@ -20,7 +20,6 @@ from aind_dynamic_foraging_database import EVENT_DB, TRIAL_DB
 
 from biodata_cache.registry import NAMES, TABLE_REGISTRY
 
-
 _TABLE_BASES = {
     "df_trials": TRIAL_DB,
     "df_events": EVENT_DB,

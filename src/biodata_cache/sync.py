@@ -12,6 +12,7 @@ from .cache_table_helpers.platform_df import (
 )
 from .cache_table_helpers.platform_exaspim import platform_exaspim_columns
 from .cache_table_helpers.platform_fib import platform_fib_columns
+from .cache_table_helpers.platform_mouselight import platform_mouselight_columns
 from .cache_table_helpers.platform_qc import PLATFORMS, platform_qc_columns
 from .cache_table_helpers.platform_smartspim import assets_smartspim_columns
 from .cache_table_helpers.qc import qc_columns
@@ -172,6 +173,14 @@ def publish_cache_registry() -> None:
             type=CacheTableType.metadata,
             columns=scientist_rl_fib_columns(),
         ),
+        CacheTable(
+            name=NAMES["mouselight"],
+            description="Janelia MouseLight neuron list (one row per neuron) with label, soma region and tracing UUIDs",
+            location=BACKEND.get_location(NAMES["mouselight"]),
+            partitioned=False,
+            type=CacheTableType.platform,
+            columns=platform_mouselight_columns(),
+        ),
     ]
     registry = CacheRegistry(tables=table_list)
     BACKEND.put_json("cache_registry.json", registry.model_dump_json())
@@ -186,7 +195,7 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
     After all selected updates, publishes cache registry JSON to the cache root.
 
     Args:
-        fast: If True, run fast DocDB-only cache tables (upn, usi, ugt, d2r, upgrade, fib, platform_qc).
+        fast: If True, run fast DocDB-only cache tables (upn, usi, ugt, d2r, upgrade, fib, mouselight, platform_qc).
         slow: If True, run slow per-subject/S3 cache tables (qc, smartspim, exaspim, df_sessions/df_trials/df_events, curriculum, time_to_qc, scientist_rl_fib).
     """
     df_basics = TABLE_REGISTRY[NAMES["basics"]](force_update=True)
@@ -198,6 +207,7 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
         TABLE_REGISTRY[NAMES["d2r"]](force_update=True)
         TABLE_REGISTRY[NAMES["upgrade"]](force_update=True)
         TABLE_REGISTRY[NAMES["fib"]](force_update=True)
+        TABLE_REGISTRY[NAMES["mouselight"]](force_update=True)
         for platform in PLATFORMS:
             TABLE_REGISTRY[NAMES["platform_qc"]](platform=platform, force_update=True)
 
