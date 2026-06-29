@@ -4,7 +4,6 @@ import logging
 import re
 
 import pandas as pd
-from aind_data_access_api.document_db import MetadataDbClient
 
 import biodata_cache.registry as registry
 from biodata_cache.models import Column
@@ -45,6 +44,7 @@ def source_data(force_update: bool = False) -> pd.DataFrame:
                 backend=registry.BACKEND.__class__.__name__, table=registry.NAMES["d2r"], message="Updating cache"
             ).to_json()
         )
+        from aind_data_access_api.document_db import MetadataDbClient
         client = MetadataDbClient(
             host=registry.API_GATEWAY_HOST,
             version="v2",

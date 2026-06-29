@@ -3,7 +3,6 @@
 import logging
 
 import pandas as pd
-from aind_data_access_api.document_db import MetadataDbClient
 
 import biodata_cache.registry as registry
 from biodata_cache.models import Column
@@ -138,6 +137,7 @@ def _build(platform: str) -> pd.DataFrame:
 
     asset_names = platform_df["name"].tolist()
 
+    from aind_data_access_api.document_db import MetadataDbClient
     client = MetadataDbClient(
         host=registry.API_GATEWAY_HOST,
         version="v2",

@@ -12,7 +12,6 @@ import logging
 
 import duckdb
 import pandas as pd
-from aind_dynamic_foraging_database import EVENT_DB, SESSION_DB, TRIAL_DB
 
 import biodata_cache.registry as registry
 from biodata_cache.models import Column
@@ -30,6 +29,7 @@ def _log(table: str, message: str) -> None:
 
 
 def _read_session_table() -> pd.DataFrame:
+    from aind_dynamic_foraging_database import SESSION_DB
     with duckdb.connect() as con:
         return con.sql(f"SELECT * FROM read_parquet('{SESSION_DB}')").df()
 
@@ -100,6 +100,7 @@ def platform_dynamic_foraging_trials(subject_id: str, force_update: bool = False
 
     if df.empty or force_update:
         setup_logging()
+        from aind_dynamic_foraging_database import TRIAL_DB
         _log(table, f"Updating cache for subject {subject_id} from upstream trial_table")
         df = _read_subject_partition(TRIAL_DB, str(subject_id))
         registry.BACKEND.write(cache_key, df)
@@ -134,6 +135,7 @@ def platform_dynamic_foraging_events(subject_id: str, force_update: bool = False
 
     if df.empty or force_update:
         setup_logging()
+        from aind_dynamic_foraging_database import EVENT_DB
         _log(table, f"Updating cache for subject {subject_id} from upstream event_table")
         df = _read_subject_partition(EVENT_DB, str(subject_id))
         registry.BACKEND.write(cache_key, df)

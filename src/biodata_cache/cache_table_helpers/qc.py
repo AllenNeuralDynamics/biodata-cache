@@ -4,7 +4,6 @@ import logging
 from datetime import datetime
 
 import pandas as pd
-from aind_data_access_api.document_db import MetadataDbClient
 
 import biodata_cache.registry as registry
 from biodata_cache.models import Column
@@ -101,6 +100,7 @@ def _fetch_subject_qc(subject_id: str) -> pd.DataFrame:
         ).to_json()
     )
 
+    from aind_data_access_api.document_db import MetadataDbClient
     client = MetadataDbClient(
         host=registry.API_GATEWAY_HOST,
         version="v2",

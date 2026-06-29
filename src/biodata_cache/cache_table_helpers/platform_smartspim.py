@@ -5,7 +5,6 @@ import logging
 
 import boto3
 import pandas as pd
-from aind_data_access_api.document_db import MetadataDbClient
 
 import biodata_cache.registry as registry
 from biodata_cache.cache_table_helpers.asset_basics import asset_basics
@@ -66,6 +65,7 @@ def _fetch_raw_ng_link(raw_name: str) -> str | None:
 
 def _fetch_asset_metadata(asset_names: list[str]) -> dict[str, dict]:
     """Fetch location and processing metadata for stitched assets from the document DB."""
+    from aind_data_access_api.document_db import MetadataDbClient
     client = MetadataDbClient(
         host=registry.API_GATEWAY_HOST,
         version="v2",

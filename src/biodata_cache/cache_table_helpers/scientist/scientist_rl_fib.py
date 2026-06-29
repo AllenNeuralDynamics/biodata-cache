@@ -10,7 +10,6 @@ import logging
 from collections import defaultdict
 
 import pandas as pd
-from aind_data_access_api.document_db import MetadataDbClient
 
 import biodata_cache.registry as registry
 from biodata_cache.models import Column
@@ -31,6 +30,7 @@ _FILTER = {
 
 def _fetch_records() -> list[dict]:
     """Fetch all matching records with name, subject_id, and procedures."""
+    from aind_data_access_api.document_db import MetadataDbClient
     client = MetadataDbClient(host=registry.API_GATEWAY_HOST, version="v2")
     projection = {
         "name": 1,

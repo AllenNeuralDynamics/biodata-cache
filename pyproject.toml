@@ -21,14 +21,14 @@ dependencies = [
     'pyarrow',
     'boto3',
     'pandas>=2.2.0',
-    'aind-data-access-api[docdb]',
-    'aind-dynamic-foraging-database',
     'semver',
-    'zarr<3',
 ]
 
 [dependency-groups]
 dev = [
+    'aind-data-access-api[docdb]',
+    'aind-dynamic-foraging-database',
+    'zarr<3',
     'ruff',
     'coverage',
     'interrogate',

@@ -3,7 +3,6 @@
 import logging
 
 import pandas as pd
-from aind_data_access_api.document_db import MetadataDbClient
 
 import biodata_cache.registry as registry
 from biodata_cache.cache_table_helpers.asset_basics import asset_basics
@@ -15,6 +14,7 @@ BATCH_SIZE = 100
 
 def _fetch_fib_records(asset_names: list[str]) -> list[dict]:
     """Fetch fiber photometry metadata for assets from the document DB in batches of 100."""
+    from aind_data_access_api.document_db import MetadataDbClient
     client = MetadataDbClient(
         host=registry.API_GATEWAY_HOST,
         version="v2",

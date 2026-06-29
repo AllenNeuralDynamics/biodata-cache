@@ -23,6 +23,8 @@ from biodata_cache.utils import CacheLogMessage, setup_logging
 
 _FP_GROUP = "processing/fiber_photometry"
 _SERIES_RE = re.compile(r"^(G|R|Iso)_(\d+)_(.+)$")
+_PRIMARY_METHOD = "dff-bright_mc-iso-IRLS"
+_FALLBACK_METHOD = "dff-bright"
 _S3_URI_RE = re.compile(r"^s3://([^/]+)/(.+)$")
 _MAX_WORKERS = 32
 
@@ -116,7 +118,7 @@ def _extract_session_traces(root, asset_name: str, subject_id: str) -> pd.DataFr
         if match is None:
             continue
         channel, fiber_idx, method = match.group(1), int(match.group(2)), match.group(3)
-        if method != "dff-bright":
+        if method not in (_PRIMARY_METHOD, _FALLBACK_METHOD):
             continue
         series = fp[series_name]
         data = series["data"][:]
@@ -126,6 +128,10 @@ def _extract_session_traces(root, asset_name: str, subject_id: str) -> pd.DataFr
         if key not in groups:
             groups[key] = {"timestamp": timestamps[:n]}
         groups[key][method] = data[:n].astype("float32")
+
+    for key in groups:
+        if _PRIMARY_METHOD in groups[key] and _FALLBACK_METHOD in groups[key]:
+            del groups[key][_FALLBACK_METHOD]
 
     if not groups:
         return pd.DataFrame()

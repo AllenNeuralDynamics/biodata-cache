@@ -1,7 +1,5 @@
 """Update the fiber photometry dF/F trace cache table for all fib subjects."""
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
 from biodata_cache.registry import NAMES, TABLE_REGISTRY
 
 
@@ -17,20 +15,9 @@ def main():
 
     fib_traces_fn = TABLE_REGISTRY[NAMES["fib_traces"]]
 
-    try:
-        with ThreadPoolExecutor() as executor:
-            futures = {
-                executor.submit(fib_traces_fn, subject_id=subject_id, force_update=True): subject_id
-                for subject_id in subject_ids
-            }
-            for i, future in enumerate(as_completed(futures), 1):
-                subject_id = futures[future]
-                future.result()
-                print(f"[{i}/{len(subject_ids)}] Done: {subject_id}")
-    # no test coverage needed on exception
-    except Exception:  # noqa: PERF203
-        for subject_id in subject_ids:
-            fib_traces_fn(subject_id=subject_id, force_update=True)
+    for i, subject_id in enumerate(subject_ids, 1):
+        fib_traces_fn(subject_id=subject_id, force_update=True)
+        print(f"[{i}/{len(subject_ids)}] Done: {subject_id}")
 
     print("Fiber photometry trace cache update complete.")
 

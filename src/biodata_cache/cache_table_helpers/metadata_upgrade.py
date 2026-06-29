@@ -3,7 +3,6 @@
 import logging
 
 import pandas as pd
-from aind_data_access_api.document_db import MetadataDbClient
 
 import biodata_cache.registry as registry
 from biodata_cache.cache_table_helpers.custom import custom
@@ -87,6 +86,7 @@ def metadata_upgrade(force_update: bool = False) -> pd.DataFrame:
         successful = successful.merge(v2_lookup, on="v2_id", how="left")
 
         if not failed.empty:
+            from aind_data_access_api.document_db import MetadataDbClient
             v1_client = MetadataDbClient(
                 host=registry.API_GATEWAY_HOST,
                 version="v1",
