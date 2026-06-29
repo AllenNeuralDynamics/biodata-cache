@@ -15,7 +15,7 @@ def memory_tree():
     registry.BACKEND = MemoryBackend()
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_lazy_with_force_update(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -51,7 +51,7 @@ def test_qc_lazy_without_force_update():
     assert "qc/subject_id=test-subject" in path
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_columns_in_output(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -79,7 +79,7 @@ def test_qc_columns_in_output(mock_client_class):
         assert col in df.columns
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_drops_unwanted_columns(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -110,7 +110,7 @@ def test_qc_drops_unwanted_columns(mock_client_class):
     assert "name" in df.columns
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_timestamp_parsing_with_z_suffix(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -140,7 +140,7 @@ def test_qc_timestamp_parsing_with_z_suffix(mock_client_class):
     assert df.iloc[0]["timestamp"].year == 2025
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_timestamp_parsing_invalid_format(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -169,7 +169,7 @@ def test_qc_timestamp_parsing_invalid_format(mock_client_class):
     assert pd.isna(df.iloc[0]["timestamp"])
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_curation_metric_skipped(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance

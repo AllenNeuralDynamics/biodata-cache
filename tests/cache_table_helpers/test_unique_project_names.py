@@ -8,7 +8,7 @@ import pytest
 from biodata_cache.cache_table_helpers.unique_project_names import unique_project_names
 
 
-@patch("biodata_cache.cache_table_helpers.unique_project_names.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.unique_project_names.registry.BACKEND")
 def test_cache_hit(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame({"project_name": ["proj1", "proj2", "proj3"]})
@@ -24,7 +24,7 @@ def test_empty_cache_raises_error(mock_backend):
         unique_project_names(force_update=False)
 
 
-@patch("biodata_cache.cache_table_helpers.unique_project_names.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.unique_project_names.registry.BACKEND")
 def test_cache_miss(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -37,7 +37,7 @@ def test_cache_miss(mock_backend, mock_client_class):
     mock_client_instance.aggregate_docdb_records.assert_called_once()
 
 
-@patch("biodata_cache.cache_table_helpers.unique_project_names.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.unique_project_names.registry.BACKEND")
 def test_filters_nan(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -52,7 +52,7 @@ def test_filters_nan(mock_backend, mock_client_class):
     assert result == ["proj1", "proj2"]
 
 
-@patch("biodata_cache.cache_table_helpers.unique_project_names.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.unique_project_names.registry.BACKEND")
 def test_force_update(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame({"project_name": ["old_proj"]})

@@ -15,7 +15,7 @@ def memory_tree():
     registry.BACKEND = MemoryBackend()
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_cache_miss_with_force_update(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -58,7 +58,7 @@ def test_qc_cache_miss_with_force_update(mock_client_class):
     assert df.iloc[0]["value"] == "{dict}"
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_cache_hit(mock_client_class):
     cache_df = pd.DataFrame(
         {"name": ["Metric 1", "Metric 2"], "stage": ["Processing", "Acquisition"], "value": ["pass", "{dict}"]}
@@ -75,7 +75,7 @@ def test_qc_empty_cache_raises_error():
     assert df.empty
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_no_record_found(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -83,7 +83,7 @@ def test_qc_no_record_found(mock_client_class):
     assert qc("missing-asset", force_update=True).empty
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_no_metrics_in_record(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -93,7 +93,7 @@ def test_qc_no_metrics_in_record(mock_client_class):
     assert qc("test-asset", force_update=True).empty
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_cache_persistence(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -125,7 +125,7 @@ def test_qc_cache_persistence(mock_client_class):
     mock_client_instance.retrieve_docdb_records.assert_not_called()
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_multiple_assets_merge(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -172,7 +172,7 @@ def test_qc_multiple_assets_merge(mock_client_class):
     assert df[df["name"] == "Metric B"].iloc[0]["asset_name"] == "asset2"
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_multiple_assets_from_cache(mock_client_class):
     cache_df1 = pd.DataFrame(
         {"name": ["Metric 1"], "stage": ["Processing"], "value": ["pass"], "asset_name": ["asset1"]}
@@ -193,7 +193,7 @@ def test_qc_multiple_empty_assets_no_force_update():
     assert df.empty
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_single_asset_name_string(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -239,7 +239,7 @@ def test_qc_single_asset_name_string(mock_client_class):
     assert df.iloc[0]["asset_name"] == "asset1"
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_missing_asset_names(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -267,7 +267,7 @@ def test_qc_missing_asset_names(mock_client_class):
     assert df.iloc[0]["name"] == "Metric A"
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_status_extracted_from_status_history(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -309,7 +309,7 @@ def test_qc_status_extracted_from_status_history(mock_client_class):
     assert df[df["name"] == "Fail Metric"].iloc[0]["status"] == "Fail"
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_numeric_value_converted_to_string(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
@@ -337,7 +337,7 @@ def test_qc_numeric_value_converted_to_string(mock_client_class):
     assert df.iloc[0]["value"] == "42"
 
 
-@patch("biodata_cache.cache_table_helpers.qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_qc_tag_statuses_cached_separately(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance

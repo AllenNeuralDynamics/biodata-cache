@@ -195,7 +195,7 @@ def test_time_to_qc_empty_cache_returns_empty():
 
 
 @patch("biodata_cache.cache_table_helpers.time_to_qc.asset_basics")
-@patch("biodata_cache.cache_table_helpers.time_to_qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_time_to_qc_force_update_drops_no_qc(mock_client_class, mock_asset_basics):
     mock_asset_basics.return_value = pd.DataFrame(
         {
@@ -233,7 +233,7 @@ def test_time_to_qc_force_update_drops_no_qc(mock_client_class, mock_asset_basic
 
 @patch("biodata_cache.cache_table_helpers.time_to_qc.datetime")
 @patch("biodata_cache.cache_table_helpers.time_to_qc.asset_basics")
-@patch("biodata_cache.cache_table_helpers.time_to_qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_time_to_qc_pending_qc_uses_now(mock_client_class, mock_asset_basics, mock_datetime):
     mock_datetime.now.return_value.isoformat.return_value = "2026-06-11T00:00:00+00:00"
     mock_asset_basics.return_value = pd.DataFrame(
@@ -264,7 +264,7 @@ def test_time_to_qc_pending_qc_uses_now(mock_client_class, mock_asset_basics, mo
 
 
 @patch("biodata_cache.cache_table_helpers.time_to_qc.asset_basics")
-@patch("biodata_cache.cache_table_helpers.time_to_qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_time_to_qc_no_derived_assets(mock_client_class, mock_asset_basics):
     mock_asset_basics.return_value = pd.DataFrame(
         {"name": ["asset_raw"], "data_level": ["raw"]}
@@ -275,7 +275,7 @@ def test_time_to_qc_no_derived_assets(mock_client_class, mock_asset_basics):
 
 
 @patch("biodata_cache.cache_table_helpers.time_to_qc.asset_basics")
-@patch("biodata_cache.cache_table_helpers.time_to_qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_time_to_qc_cached_after_fetch(mock_client_class, mock_asset_basics):
     mock_asset_basics.return_value = pd.DataFrame(
         {"name": ["asset_d"], "data_level": ["derived"]}

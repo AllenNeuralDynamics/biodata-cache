@@ -290,7 +290,7 @@ def test_build_fib_rows_real_example(real_record):
 # --- _fetch_fib_records ---
 
 
-@patch("biodata_cache.cache_table_helpers.platform_fib.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_fetch_fib_records_batches(mock_client_class):
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
@@ -299,7 +299,7 @@ def test_fetch_fib_records_batches(mock_client_class):
     assert mock_client.retrieve_docdb_records.call_count == 3
 
 
-@patch("biodata_cache.cache_table_helpers.platform_fib.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_fetch_fib_records_combines_batches(mock_client_class):
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
@@ -335,7 +335,7 @@ def test_platform_fib_cache_hit(mock_backend):
     assert len(result) == 1
 
 
-@patch("biodata_cache.cache_table_helpers.platform_fib.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.platform_fib.asset_basics")
 @patch("biodata_cache.cache_table_helpers.platform_fib.registry.BACKEND")
 def test_platform_fib_force_update(mock_backend, mock_basics, mock_client_class):
@@ -349,7 +349,7 @@ def test_platform_fib_force_update(mock_backend, mock_basics, mock_client_class)
     mock_backend.write.assert_called_once()
 
 
-@patch("biodata_cache.cache_table_helpers.platform_fib.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.platform_fib.asset_basics")
 @patch("biodata_cache.cache_table_helpers.platform_fib.registry.BACKEND")
 def test_platform_fib_filters_fib_modality(mock_backend, mock_basics, mock_client_class):

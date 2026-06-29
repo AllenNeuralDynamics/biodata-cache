@@ -131,7 +131,7 @@ def test_platform_qc_empty_cache_raises():
         platform_qc("spim", force_update=False)
 
 
-@patch("biodata_cache.cache_table_helpers.platform_qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_platform_qc_spim_builds(mock_client_class, basics_df):
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
@@ -145,7 +145,7 @@ def test_platform_qc_spim_builds(mock_client_class, basics_df):
     assert set(df["asset_name"].unique()) == {"spim_asset_1"}
 
 
-@patch("biodata_cache.cache_table_helpers.platform_qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_platform_qc_dynamic_foraging_filters_modality(mock_client_class, basics_df):
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
@@ -165,7 +165,7 @@ def test_platform_qc_dynamic_foraging_filters_modality(mock_client_class, basics
     assert "fib" not in tags
 
 
-@patch("biodata_cache.cache_table_helpers.platform_qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_platform_qc_no_qc_data_returns_empty(mock_client_class, basics_df):
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
@@ -176,7 +176,7 @@ def test_platform_qc_no_qc_data_returns_empty(mock_client_class, basics_df):
     assert df.empty
 
 
-@patch("biodata_cache.cache_table_helpers.platform_qc.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_platform_qc_result_cached(mock_client_class, basics_df):
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client

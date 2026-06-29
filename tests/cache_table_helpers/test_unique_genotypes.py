@@ -25,7 +25,7 @@ def test_unique_genotypes_cache_hit(mock_backend):
     assert result == ["Ai32", "Ai148"]
 
 
-@patch("biodata_cache.cache_table_helpers.unique_genotypes.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.unique_genotypes.registry.BACKEND")
 def test_unique_genotypes_force_update(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -41,7 +41,7 @@ def test_unique_genotypes_force_update(mock_backend, mock_client_class):
     mock_backend.write.assert_called_once()
 
 
-@patch("biodata_cache.cache_table_helpers.unique_genotypes.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.unique_genotypes.registry.BACKEND")
 def test_unique_genotypes_excludes_null(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -56,7 +56,7 @@ def test_unique_genotypes_excludes_null(mock_backend, mock_client_class):
     assert "Ai32" in result
 
 
-@patch("biodata_cache.cache_table_helpers.unique_genotypes.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.unique_genotypes.registry.BACKEND")
 def test_unique_genotypes_pipeline_filters_nulls(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()

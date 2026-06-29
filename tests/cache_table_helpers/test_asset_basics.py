@@ -7,7 +7,7 @@ import pandas as pd
 from biodata_cache.cache_table_helpers.asset_basics import asset_basics
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_asset_basics_cache_hit(mock_backend, mock_client_class):
     cached_df = pd.DataFrame(
@@ -29,7 +29,7 @@ def test_asset_basics_cache_hit(mock_backend, mock_client_class):
     mock_client_class.assert_not_called()
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_asset_basics_empty_cache_fetches_from_db(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -59,7 +59,7 @@ def test_asset_basics_empty_cache_fetches_from_db(mock_backend, mock_client_clas
     assert result.iloc[0]["_id"] == "id1"
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_asset_basics_cache_miss(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -84,7 +84,7 @@ def test_asset_basics_cache_miss(mock_backend, mock_client_class):
     assert result.iloc[0]["project_name"] == "proj1"
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_asset_basics_with_data_processes(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -112,7 +112,7 @@ def test_asset_basics_with_data_processes(mock_backend, mock_client_class):
     assert result.iloc[0]["process_date"] == "2023-01-20"
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_asset_basics_incremental_update(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -142,7 +142,7 @@ def test_asset_basics_incremental_update(mock_backend, mock_client_class):
     assert result.iloc[0]["_id"] == "id2"
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_asset_basics_with_other_identifiers_no_code_ocean(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -165,7 +165,7 @@ def test_asset_basics_with_other_identifiers_no_code_ocean(mock_backend, mock_cl
     assert result.iloc[0]["code_ocean"] is None
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_asset_basics_with_code_ocean_identifier(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -188,7 +188,7 @@ def test_asset_basics_with_code_ocean_identifier(mock_backend, mock_client_class
     assert result.iloc[0]["code_ocean"] == ["df429003-91a0-45d2-8457-66b156ad8bfa"]
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_age_calculated_from_date_of_birth(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -209,7 +209,7 @@ def test_age_calculated_from_date_of_birth(mock_backend, mock_client_class):
     assert result.iloc[0]["age"] == 151
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_age_calculated_from_year_of_birth(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -230,7 +230,7 @@ def test_age_calculated_from_year_of_birth(mock_backend, mock_client_class):
     assert result.iloc[0]["age"] == 151
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_age_none_when_no_birth_info(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -248,7 +248,7 @@ def test_age_none_when_no_birth_info(mock_backend, mock_client_class):
     assert result.iloc[0]["age"] is None
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_acquisition_type_stored(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -266,7 +266,7 @@ def test_acquisition_type_stored(mock_backend, mock_client_class):
     assert result.iloc[0]["acquisition_type"] == "multiplane-2photon"
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_experimenters_stored_as_list(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -284,7 +284,7 @@ def test_experimenters_stored_as_list(mock_backend, mock_client_class):
     assert result.iloc[0]["experimenters"] == ["huy.nguyen", "jane.doe"]
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_experimenters_stored_as_list_dicts(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -307,7 +307,7 @@ def test_experimenters_stored_as_list_dicts(mock_backend, mock_client_class):
     assert result.iloc[0]["experimenters"] == ["Jane Doe", "John Smith"]
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_experimenters_empty_when_missing(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -325,7 +325,7 @@ def test_experimenters_empty_when_missing(mock_backend, mock_client_class):
     assert result.iloc[0]["experimenters"] == []
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_instrument_id_stored(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -343,7 +343,7 @@ def test_instrument_id_stored(mock_backend, mock_client_class):
     assert result.iloc[0]["instrument_id"] == "4A"
 
 
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.asset_basics.registry.BACKEND")
 def test_instrument_id_none_when_missing(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()

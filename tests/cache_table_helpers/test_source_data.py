@@ -9,7 +9,7 @@ import pandas as pd
 from biodata_cache.cache_table_helpers.source_data import source_data
 
 
-@patch("biodata_cache.cache_table_helpers.source_data.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.source_data.registry.BACKEND")
 def test_source_data_cache_hit(mock_backend, mock_client_class):
     cached_df = pd.DataFrame(
@@ -27,7 +27,7 @@ def test_source_data_cache_hit(mock_backend, mock_client_class):
     mock_client_class.assert_not_called()
 
 
-@patch("biodata_cache.cache_table_helpers.source_data.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.source_data.registry.BACKEND")
 def test_source_data_empty_cache_fetches_from_db(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -39,7 +39,7 @@ def test_source_data_empty_cache_fetches_from_db(mock_backend, mock_client_class
     mock_client_instance.retrieve_docdb_records.assert_called_once()
 
 
-@patch("biodata_cache.cache_table_helpers.source_data.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.source_data.registry.BACKEND")
 def test_source_data_cache_miss(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -66,7 +66,7 @@ def test_source_data_cache_miss(mock_backend, mock_client_class):
     assert row.iloc[0]["processing_time"] == "2026-02-14_12-44-45"
 
 
-@patch("biodata_cache.cache_table_helpers.source_data.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.source_data.registry.BACKEND")
 def test_source_data_multiple_sources(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -86,7 +86,7 @@ def test_source_data_multiple_sources(mock_backend, mock_client_class):
     assert (result["processing_time"] == "2026-01-02_12-00-00").all()
 
 
-@patch("biodata_cache.cache_table_helpers.source_data.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.source_data.registry.BACKEND")
 def test_source_data_no_source_data(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -105,7 +105,7 @@ def test_source_data_no_source_data(mock_backend, mock_client_class):
     assert result.iloc[0]["pipeline_name"] == ""
 
 
-@patch("biodata_cache.cache_table_helpers.source_data.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.source_data.registry.BACKEND")
 def test_source_data_force_update(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame(

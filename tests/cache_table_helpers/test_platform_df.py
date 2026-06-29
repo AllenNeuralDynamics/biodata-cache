@@ -245,8 +245,3 @@ def test_registry_names_present():
     assert NAMES["df_trials"] == "platform_dynamic_foraging_trials"
     assert NAMES["df_events"] == "platform_dynamic_foraging_events"
 
-
-def test_module_exports_query_helpers():
-    assert hasattr(platform_df, "SESSION_DB")
-    assert hasattr(platform_df, "TRIAL_DB")
-    assert hasattr(platform_df, "EVENT_DB")

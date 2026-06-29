@@ -8,7 +8,7 @@ import pytest
 from biodata_cache.cache_table_helpers.unique_subject_ids import unique_subject_ids
 
 
-@patch("biodata_cache.cache_table_helpers.unique_subject_ids.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.unique_subject_ids.registry.BACKEND")
 def test_cache_hit(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame({"subject_id": ["sub001", "sub002"]})
@@ -24,7 +24,7 @@ def test_empty_cache_raises_error(mock_backend):
         unique_subject_ids(force_update=False)
 
 
-@patch("biodata_cache.cache_table_helpers.unique_subject_ids.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.unique_subject_ids.registry.BACKEND")
 def test_cache_miss(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame()
@@ -36,7 +36,7 @@ def test_cache_miss(mock_backend, mock_client_class):
     mock_client_class.assert_called_once()
 
 
-@patch("biodata_cache.cache_table_helpers.unique_subject_ids.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.unique_subject_ids.registry.BACKEND")
 def test_force_update(mock_backend, mock_client_class):
     mock_backend.read.return_value = pd.DataFrame({"subject_id": ["old_sub"]})

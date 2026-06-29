@@ -144,7 +144,7 @@ def test_fetch_raw_ng_link_returns_none_on_s3_error(mock_boto_client):
 # --- _fetch_asset_metadata ---
 
 
-@patch("biodata_cache.cache_table_helpers.platform_smartspim.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_fetch_asset_metadata_returns_dict_keyed_by_name(mock_client_class):
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
@@ -154,7 +154,7 @@ def test_fetch_asset_metadata_returns_dict_keyed_by_name(mock_client_class):
     assert result[STITCHED_NAME]["_id"] == "abc123"
 
 
-@patch("biodata_cache.cache_table_helpers.platform_smartspim.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_fetch_asset_metadata_passes_correct_filter(mock_client_class):
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
@@ -165,7 +165,7 @@ def test_fetch_asset_metadata_passes_correct_filter(mock_client_class):
     assert call_kwargs["filter_query"] == {"name": {"$in": names}}
 
 
-@patch("biodata_cache.cache_table_helpers.platform_smartspim.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_fetch_asset_metadata_batches_large_requests(mock_client_class):
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
@@ -407,8 +407,8 @@ def test_returns_expected_columns():
 
 @patch("biodata_cache.cache_table_helpers.platform_smartspim._fetch_raw_ng_link")
 @patch("biodata_cache.cache_table_helpers.platform_smartspim._fetch_asset_metadata")
-@patch("biodata_cache.cache_table_helpers.source_data.MetadataDbClient")
-@patch("biodata_cache.cache_table_helpers.asset_basics.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
+@patch("aind_data_access_api.document_db.MetadataDbClient")
 @patch("biodata_cache.cache_table_helpers.platform_smartspim.registry.BACKEND")
 def test_force_update_cold_dependency_cache(
     mock_backend, mock_basics_client, mock_sd_client, mock_fetch_meta, mock_raw_ng_link
