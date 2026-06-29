@@ -20,6 +20,7 @@ HIVE_PARTITION_KEYS = {
     "platform_qc": "platform",
     "platform_dynamic_foraging_trials": "subject_id",
     "platform_dynamic_foraging_events": "subject_id",
+    "platform_fib_traces": "subject_id",
 }
 
 
@@ -88,7 +89,7 @@ class S3Backend(Backend):
             json_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{table_name}.json"
 
         parquet_buffer = io.BytesIO()
-        data.to_parquet(parquet_buffer, index=False)
+        data.to_parquet(parquet_buffer, index=False, compression="zstd")
         parquet_buffer.seek(0)
 
         self.s3_client.put_object(

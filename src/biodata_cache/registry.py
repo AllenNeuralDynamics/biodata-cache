@@ -46,6 +46,7 @@ NAMES = {
     "exaspim": "platform_exaspim",
     "upgrade": "metadata_upgrade",
     "fib": "platform_fib",
+    "fib_traces": "platform_fib_traces",
     "core": "metadata_core",
     "df_sessions": "platform_dynamic_foraging_sessions",
     "df_trials": "platform_dynamic_foraging_trials",

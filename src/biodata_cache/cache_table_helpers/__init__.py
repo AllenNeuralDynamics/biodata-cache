@@ -9,6 +9,7 @@ from biodata_cache.cache_table_helpers import (  # noqa: F401
     platform_df,
     platform_exaspim,
     platform_fib,
+    platform_fib_traces,
     platform_qc,
     platform_smartspim,
     qc,

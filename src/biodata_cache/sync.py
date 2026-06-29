@@ -12,6 +12,7 @@ from .cache_table_helpers.platform_df import (
 )
 from .cache_table_helpers.platform_exaspim import platform_exaspim_columns
 from .cache_table_helpers.platform_fib import platform_fib_columns
+from .cache_table_helpers.platform_fib_traces import platform_fib_traces_columns
 from .cache_table_helpers.platform_mouselight import platform_mouselight_columns
 from .cache_table_helpers.platform_qc import PLATFORMS, platform_qc_columns
 from .cache_table_helpers.platform_smartspim import assets_smartspim_columns
@@ -115,6 +116,15 @@ def publish_cache_registry() -> None:
             columns=platform_fib_columns(),
         ),
         CacheTable(
+            name=NAMES["fib_traces"],
+            description="Processed fiber photometry dF/F traces (one row per sample), partitioned by subject_id",
+            location=BACKEND.get_location("platform_fib_traces", partitioned=True),
+            partitioned=True,
+            partition_key="subject_id",
+            type=CacheTableType.platform,
+            columns=platform_fib_traces_columns(),
+        ),
+        CacheTable(
             name=NAMES["df_sessions"],
             description="Dynamic foraging session table (one row per session); mirrors upstream aind-dynamic-foraging-database",
             location=BACKEND.get_location(NAMES["df_sessions"]),
@@ -196,7 +206,7 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
 
     Args:
         fast: If True, run fast DocDB-only cache tables (upn, usi, ugt, d2r, upgrade, fib, mouselight, platform_qc).
-        slow: If True, run slow per-subject/S3 cache tables (qc, smartspim, exaspim, df_sessions/df_trials/df_events, curriculum, time_to_qc, scientist_rl_fib).
+        slow: If True, run slow per-subject/S3 cache tables (qc, smartspim, exaspim, df_sessions/df_trials/df_events, fib_traces, curriculum, time_to_qc, scientist_rl_fib).
     """
     df_basics = TABLE_REGISTRY[NAMES["basics"]](force_update=True)
 
@@ -251,6 +261,29 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
                 for subject_id in df_subject_ids:
                     trials_fn(subject_id=subject_id, force_update=True)
                     events_fn(subject_id=subject_id, force_update=True)
+
+        fib_subject_ids = []
+        if "modalities" in df_basics.columns and "data_level" in df_basics.columns:
+            fib_mask = df_basics["modalities"].apply(
+                lambda x: x is not None and not isinstance(x, float) and any("fib" in m.lower() for m in x)
+            )
+            fib_subject_ids = (
+                df_basics[fib_mask & (df_basics["data_level"] == "derived")]["subject_id"].dropna().unique()
+            )
+        if len(fib_subject_ids) > 0:
+            fib_traces_fn = TABLE_REGISTRY[NAMES["fib_traces"]]
+            try:
+                with ThreadPoolExecutor() as executor:
+                    futures = [
+                        executor.submit(fib_traces_fn, subject_id=subject_id, force_update=True)
+                        for subject_id in fib_subject_ids
+                    ]
+                    for future in as_completed(futures):
+                        future.result()
+            except Exception:
+                for subject_id in fib_subject_ids:
+                    fib_traces_fn(subject_id=subject_id, force_update=True)
+
         TABLE_REGISTRY[NAMES["curriculum"]](force_update=True)
         TABLE_REGISTRY[NAMES["time_to_qc"]](force_update=True)
         TABLE_REGISTRY[NAMES["scientist_rl_fib"]](force_update=True)

@@ -227,7 +227,7 @@ def test_published_json_contains_nine_tables(mock_backend):
     publish_cache_registry()
     payload = json.loads(mock_backend.put_json.call_args[0][1])
     assert "tables" in payload
-    assert len(payload["tables"]) == 18
+    assert len(payload["tables"]) == 19
 
 
 @patch("biodata_cache.sync.BACKEND")
@@ -278,6 +278,7 @@ def test_non_qc_table_fns_are_metadata_type(mock_backend):
         "platform_dynamic_foraging_sessions",
         "platform_dynamic_foraging_trials",
         "platform_dynamic_foraging_events",
+        "platform_fib_traces",
         "platform_mouselight",
     }
     for cache_table in payload["tables"]:
@@ -290,7 +291,7 @@ def test_non_qc_table_fns_are_metadata_type(mock_backend):
 def test_get_location_called_for_each_table(mock_backend):
     mock_backend.get_location.return_value = "s3://bucket/path"
     publish_cache_registry()
-    assert mock_backend.get_location.call_count == 18
+    assert mock_backend.get_location.call_count == 19
 
 
 @patch("biodata_cache.sync.BACKEND")
@@ -488,3 +489,68 @@ def test_update_all_tables_propagates_exceptions(mock_registry):
         update_all_tables()
 
     mock_upn.assert_called_once_with(force_update=True)
+
+
+def _registry_with_fib(mock_basics, mock_fib_traces):
+    return lambda x: {
+        "unique_project_names": MagicMock(),
+        "unique_subject_ids": MagicMock(),
+        "unique_genotypes": MagicMock(),
+        "asset_basics": mock_basics,
+        "source_data": MagicMock(),
+        "raw_to_derived": MagicMock(),
+        "quality_control": MagicMock(),
+        "platform_smartspim": MagicMock(),
+        "platform_exaspim": MagicMock(),
+        "metadata_upgrade": MagicMock(),
+        "platform_fib": MagicMock(),
+        "platform_fib_traces": mock_fib_traces,
+        "platform_mouselight": MagicMock(),
+        "platform_dynamic_foraging_sessions": MagicMock(return_value=pd.DataFrame({"subject_id": []})),
+        "platform_dynamic_foraging_trials": MagicMock(),
+        "platform_dynamic_foraging_events": MagicMock(),
+        "behavior_curriculum": MagicMock(),
+        "platform_qc": MagicMock(),
+        "time_to_qc": MagicMock(),
+        "scientist_rl_fib": MagicMock(),
+    }[x]
+
+
+def _fib_basics():
+    return pd.DataFrame(
+        {
+            "subject_id": ["sub1", "sub2"],
+            "modalities": [["fib"], ["behavior"]],
+            "data_level": ["derived", "derived"],
+        }
+    )
+
+
+@patch("biodata_cache.sync.publish_cache_registry")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
+def test_fib_traces_called_per_fib_subject(mock_registry, mock_publish):
+    mock_basics = MagicMock(return_value=_fib_basics())
+    mock_fib_traces = MagicMock()
+    mock_registry.__getitem__.side_effect = _registry_with_fib(mock_basics, mock_fib_traces)
+
+    update_all_tables()
+
+    mock_fib_traces.assert_called_once_with(subject_id="sub1", force_update=True)
+
+
+@patch("biodata_cache.sync.publish_cache_registry")
+@patch("biodata_cache.sync.as_completed")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
+def test_fib_traces_fallback_sequential_on_concurrent_failure(mock_registry, mock_as_completed, mock_publish):
+    mock_basics = MagicMock(return_value=_fib_basics())
+    mock_fib_traces = MagicMock()
+    mock_registry.__getitem__.side_effect = _registry_with_fib(mock_basics, mock_fib_traces)
+
+    failed_future = MagicMock()
+    failed_future.result.side_effect = RuntimeError("Executor failed")
+    mock_as_completed.return_value = [failed_future]
+
+    update_all_tables()
+
+    mock_fib_traces.assert_any_call(subject_id="sub1", force_update=True)
+
