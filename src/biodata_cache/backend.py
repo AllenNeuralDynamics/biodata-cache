@@ -22,7 +22,7 @@ HIVE_PARTITION_KEYS = {
     "platform_qc": "platform",
     "platform_dynamic_foraging_trials": "subject_id",
     "platform_dynamic_foraging_events": "subject_id",
-    "platform_fib_traces": "subject_id",
+    "platform_fib_traces": "asset_name",
 }
 
 

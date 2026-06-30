@@ -11,7 +11,8 @@ from biodata_cache.cache_table_helpers.platform_fib_traces import (
     _FP_GROUP,
     _download_zarr_store,
     _extract_session_traces,
-    _fetch_subject_fib_traces,
+    _fetch_asset_fib_traces,
+    _fetch_implanted_fibers,
     _find_nwb_prefix,
     _open_nwb_zarr,
     _parse_s3,
@@ -74,31 +75,41 @@ def test_extract_session_traces_builds_wide_form():
     )
     root = _FakeRoot(fp)
 
-    df = _extract_session_traces(root, "asset_1", "856239")
+    df = _extract_session_traces(root, {0, 3})
 
-    assert list(df.columns) == ["subject_id", "asset_name", "fiber", "channel", "timestamp", "dff-bright"]
+    assert list(df.columns) == ["fiber", "channel", "timestamp", "dff-bright"]
     assert len(df) == 2
     assert set(df["channel"]) == {"G"}
     assert set(df["fiber"]) == {0}
-    assert (df["subject_id"] == "856239").all()
     assert list(df["dff-bright"].astype(float)) == [1.0, 2.0]
+
+
+def test_extract_session_traces_drops_fibers_without_implant():
+    fp = _FakeFP(
+        {
+            "G_0_dff-bright": _FakeSeries([1.0, 2.0], [0.1, 0.2]),
+            "G_2_dff-bright": _FakeSeries([5.0, 6.0], [0.1, 0.2]),
+        }
+    )
+    df = _extract_session_traces(_FakeRoot(fp), {0})
+    assert set(df["fiber"]) == {0}
 
 
 def test_extract_session_traces_mismatched_lengths_truncates():
     fp = _FakeFP({"R_1_dff-bright": _FakeSeries([1.0, 2.0, 3.0], [0.1, 0.2])})
-    df = _extract_session_traces(_FakeRoot(fp), "asset_1", "856239")
+    df = _extract_session_traces(_FakeRoot(fp), {1})
     assert len(df) == 2
     assert "dff-bright" in df.columns
 
 
 def test_extract_session_traces_no_fp_group_returns_empty():
-    df = _extract_session_traces(_FakeRoot(_FakeFP({}), has_fp=False), "asset_1", "856239")
+    df = _extract_session_traces(_FakeRoot(_FakeFP({}), has_fp=False), {0})
     assert df.empty
 
 
 def test_extract_session_traces_no_matching_series_returns_empty():
     fp = _FakeFP({"random_group": _FakeSeries([1.0], [0.1])})
-    df = _extract_session_traces(_FakeRoot(fp), "asset_1", "856239")
+    df = _extract_session_traces(_FakeRoot(fp), {0})
     assert df.empty
 
 
@@ -167,19 +178,19 @@ def test_open_nwb_zarr_not_found(mock_boto3, mock_find):
 
 
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.registry")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces._fetch_implanted_fibers")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces._open_nwb_zarr")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces._extract_session_traces")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.asset_basics")
-def test_fetch_subject_filters_and_writes(mock_basics, mock_extract, mock_open, mock_registry):
+def test_fetch_asset_filters_and_writes(mock_basics, mock_extract, mock_open, mock_fibers, mock_registry):
     mock_registry.NAMES = {"fib_traces": "platform_fib_traces"}
     mock_registry.BACKEND = MagicMock()
     mock_registry.BACKEND.__class__.__name__ = "MemoryBackend"
     mock_basics.return_value = _basics_df()
+    mock_fibers.return_value = {0}
     mock_open.return_value = "ROOT"
     mock_extract.return_value = pd.DataFrame(
         {
-            "subject_id": ["856239"],
-            "asset_name": ["asset_derived"],
             "fiber": [0],
             "channel": ["G"],
             "timestamp": [1.0],
@@ -187,19 +198,34 @@ def test_fetch_subject_filters_and_writes(mock_basics, mock_extract, mock_open, 
         }
     )
 
-    result = _fetch_subject_fib_traces("856239")
+    result = _fetch_asset_fib_traces("asset_derived")
 
-    # Only the single derived fib asset for subject 856239 is processed.
     mock_open.assert_called_once_with("s3://bucket/abc")
-    mock_registry.BACKEND.write_chunk.assert_called_once()
-    assert mock_registry.BACKEND.write_chunk.call_args[0][0] == "platform_fib_traces/856239"
+    mock_extract.assert_called_once_with("ROOT", {0})
+    mock_registry.BACKEND.write.assert_called_once()
+    assert mock_registry.BACKEND.write.call_args[0][0] == "platform_fib_traces/asset_derived"
     assert result.empty
 
 
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.registry")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces._open_nwb_zarr")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.asset_basics")
-def test_fetch_subject_skips_missing_location(mock_basics, mock_open, mock_registry):
+def test_fetch_asset_skips_unknown_asset(mock_basics, mock_open, mock_registry):
+    mock_registry.NAMES = {"fib_traces": "platform_fib_traces"}
+    mock_registry.BACKEND = MagicMock()
+    mock_registry.BACKEND.__class__.__name__ = "MemoryBackend"
+    mock_basics.return_value = _basics_df()
+
+    result = _fetch_asset_fib_traces("missing_asset")
+
+    mock_open.assert_not_called()
+    assert result.empty
+
+
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces.registry")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces._open_nwb_zarr")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces.asset_basics")
+def test_fetch_asset_skips_missing_location(mock_basics, mock_open, mock_registry):
     mock_registry.NAMES = {"fib_traces": "platform_fib_traces"}
     mock_registry.BACKEND = MagicMock()
     mock_registry.BACKEND.__class__.__name__ = "MemoryBackend"
@@ -207,44 +233,94 @@ def test_fetch_subject_skips_missing_location(mock_basics, mock_open, mock_regis
     df.loc[df["name"] == "asset_derived", "location"] = ""
     mock_basics.return_value = df
 
-    result = _fetch_subject_fib_traces("856239")
+    result = _fetch_asset_fib_traces("asset_derived")
 
     mock_open.assert_not_called()
     assert result.empty
 
 
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.registry")
-@patch("biodata_cache.cache_table_helpers.platform_fib_traces._extract_session_traces")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces._fetch_implanted_fibers")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces._open_nwb_zarr")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.asset_basics")
-def test_fetch_subject_skips_missing_nwb(mock_basics, mock_open, mock_extract, mock_registry):
+def test_fetch_asset_skips_when_no_implants(mock_basics, mock_open, mock_fibers, mock_registry):
     mock_registry.NAMES = {"fib_traces": "platform_fib_traces"}
     mock_registry.BACKEND = MagicMock()
     mock_registry.BACKEND.__class__.__name__ = "MemoryBackend"
     mock_basics.return_value = _basics_df()
+    mock_fibers.return_value = set()
+
+    result = _fetch_asset_fib_traces("asset_derived")
+
+    mock_open.assert_not_called()
+    assert result.empty
+
+
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces.registry")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces._fetch_implanted_fibers")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces._extract_session_traces")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces._open_nwb_zarr")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces.asset_basics")
+def test_fetch_asset_skips_missing_nwb(mock_basics, mock_open, mock_extract, mock_fibers, mock_registry):
+    mock_registry.NAMES = {"fib_traces": "platform_fib_traces"}
+    mock_registry.BACKEND = MagicMock()
+    mock_registry.BACKEND.__class__.__name__ = "MemoryBackend"
+    mock_basics.return_value = _basics_df()
+    mock_fibers.return_value = {0}
     mock_open.return_value = None
 
-    result = _fetch_subject_fib_traces("856239")
+    result = _fetch_asset_fib_traces("asset_derived")
 
     mock_extract.assert_not_called()
     assert result.empty
 
 
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.registry")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces._fetch_implanted_fibers")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces._open_nwb_zarr")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces._extract_session_traces")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.asset_basics")
-def test_fetch_subject_skips_empty_session(mock_basics, mock_extract, mock_open, mock_registry):
+def test_fetch_asset_skips_empty_session(mock_basics, mock_extract, mock_open, mock_fibers, mock_registry):
     mock_registry.NAMES = {"fib_traces": "platform_fib_traces"}
     mock_registry.BACKEND = MagicMock()
     mock_registry.BACKEND.__class__.__name__ = "MemoryBackend"
     mock_basics.return_value = _basics_df()
+    mock_fibers.return_value = {0}
     mock_open.return_value = "ROOT"
     mock_extract.return_value = pd.DataFrame()
 
-    result = _fetch_subject_fib_traces("856239")
+    result = _fetch_asset_fib_traces("asset_derived")
 
+    mock_registry.BACKEND.write.assert_not_called()
     assert result.empty
+
+
+@patch("aind_data_access_api.document_db.MetadataDbClient")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces.registry")
+def test_fetch_implanted_fibers_parses_probe_implants(mock_registry, mock_client_cls):
+    mock_registry.API_GATEWAY_HOST = "host"
+    mock_client = MagicMock()
+    mock_client.retrieve_docdb_records.return_value = [
+        {
+            "procedures": {
+                "subject_procedures": [
+                    {
+                        "procedures": [
+                            {"object_type": "Probe implant", "implanted_device": {"name": "Fiber_0"}},
+                            {"object_type": "Probe implant", "implanted_device": {"name": "Fiber 2"}},
+                            {"object_type": "Anaesthetic"},
+                            {"object_type": "Probe implant", "implanted_device": {"name": "Lens"}},
+                        ]
+                    }
+                ]
+            }
+        }
+    ]
+    mock_client_cls.return_value = mock_client
+
+    fibers = _fetch_implanted_fibers("asset_derived")
+
+    assert fibers == {0, 2}
 
 
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.registry")
@@ -253,9 +329,9 @@ def test_platform_fib_traces_reads_from_cache(mock_registry):
     mock_registry.BACKEND = MagicMock()
     mock_registry.BACKEND.read.return_value = pd.DataFrame({"value": [1.0]})
 
-    result = platform_fib_traces(subject_id="856239")
+    result = platform_fib_traces(asset_name="asset_derived")
 
-    mock_registry.BACKEND.read.assert_called_once_with("platform_fib_traces/856239")
+    mock_registry.BACKEND.read.assert_called_once_with("platform_fib_traces/asset_derived")
     assert not result.empty
 
 
@@ -266,10 +342,10 @@ def test_platform_fib_traces_raises_on_empty_without_force(mock_registry):
     mock_registry.BACKEND.read.return_value = pd.DataFrame()
 
     with pytest.raises(ValueError, match="Cache is empty"):
-        platform_fib_traces(subject_id="856239")
+        platform_fib_traces(asset_name="asset_derived")
 
 
-@patch("biodata_cache.cache_table_helpers.platform_fib_traces._fetch_subject_fib_traces")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces._fetch_asset_fib_traces")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.registry")
 def test_platform_fib_traces_force_update_fetches(mock_registry, mock_fetch):
     mock_registry.NAMES = {"fib_traces": "platform_fib_traces"}
@@ -277,43 +353,43 @@ def test_platform_fib_traces_force_update_fetches(mock_registry, mock_fetch):
     mock_registry.BACKEND.read.return_value = pd.DataFrame()
     mock_fetch.return_value = pd.DataFrame({"value": [1.0]})
 
-    result = platform_fib_traces(subject_id="856239", force_update=True)
+    result = platform_fib_traces(asset_name="asset_derived", force_update=True)
 
-    mock_fetch.assert_called_once_with("856239")
+    mock_fetch.assert_called_once_with("asset_derived")
     assert not result.empty
 
 
-@patch("biodata_cache.cache_table_helpers.platform_fib_traces._fetch_subject_fib_traces")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces._fetch_asset_fib_traces")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.registry")
 def test_platform_fib_traces_lazy_returns_location(mock_registry, mock_fetch):
     mock_registry.NAMES = {"fib_traces": "platform_fib_traces"}
     mock_registry.BACKEND = MagicMock()
     mock_registry.BACKEND.get_location.return_value = "s3://loc/data.pqt"
 
-    result = platform_fib_traces(subject_id="856239", lazy=True)
+    result = platform_fib_traces(asset_name="asset_derived", lazy=True)
 
     mock_fetch.assert_not_called()
-    mock_registry.BACKEND.get_location.assert_called_once_with("platform_fib_traces/856239")
+    mock_registry.BACKEND.get_location.assert_called_once_with("platform_fib_traces/asset_derived")
     assert result == "s3://loc/data.pqt"
 
 
-@patch("biodata_cache.cache_table_helpers.platform_fib_traces._fetch_subject_fib_traces")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces._fetch_asset_fib_traces")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.registry")
 def test_platform_fib_traces_lazy_force_update_fetches(mock_registry, mock_fetch):
     mock_registry.NAMES = {"fib_traces": "platform_fib_traces"}
     mock_registry.BACKEND = MagicMock()
     mock_registry.BACKEND.get_location.return_value = "s3://loc/data.pqt"
 
-    result = platform_fib_traces(subject_id="856239", lazy=True, force_update=True)
+    result = platform_fib_traces(asset_name="asset_derived", lazy=True, force_update=True)
 
-    mock_fetch.assert_called_once_with("856239")
+    mock_fetch.assert_called_once_with("asset_derived")
     assert result == "s3://loc/data.pqt"
 
 
 def test_platform_fib_traces_columns():
     cols = platform_fib_traces_columns()
     names = [c.name for c in cols]
-    assert names == ["subject_id", "asset_name", "fiber", "channel", "timestamp", "dff-bright"]
+    assert names == ["fiber", "channel", "timestamp", "dff-bright"]
 
 
 def test_log_emits(caplog):

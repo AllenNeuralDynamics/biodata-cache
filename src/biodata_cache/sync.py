@@ -131,10 +131,10 @@ def publish_cache_registry() -> None:
         ),
         CacheTable(
             name=NAMES["fib_traces"],
-            description="Processed fiber photometry dF/F traces (one row per sample), partitioned by subject_id",
+            description="Processed fiber photometry dF/F traces (one row per sample), partitioned by asset_name",
             location=BACKEND.get_location("platform_fib_traces", partitioned=True),
             partitioned=True,
-            partition_key="subject_id",
+            partition_key="asset_name",
             type=CacheTableType.platform,
             columns=platform_fib_traces_columns(),
         ),
@@ -271,32 +271,32 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
                     events_fn(subject_id=subject_id, force_update=True)
             gc.collect()
 
-        fib_subject_ids = []
+        fib_asset_names = []
         if "modalities" in df_basics.columns and "data_level" in df_basics.columns:
             fib_mask = df_basics["modalities"].apply(
                 lambda x: x is not None and not isinstance(x, float) and any("fib" in m.lower() for m in x)
             )
-            fib_subject_ids = (
-                df_basics[fib_mask & (df_basics["data_level"] == "derived")]["subject_id"].dropna().unique()
+            fib_asset_names = (
+                df_basics[fib_mask & (df_basics["data_level"] == "derived")]["name"].dropna().unique()
             )
-        fib_subject_ids = [
-            subject_id
-            for subject_id in fib_subject_ids
-            if not BACKEND.partition_exists(f"{NAMES['fib_traces']}/{subject_id}")
+        fib_asset_names = [
+            asset_name
+            for asset_name in fib_asset_names
+            if not BACKEND.partition_exists(f"{NAMES['fib_traces']}/{asset_name}")
         ]
-        if len(fib_subject_ids) > 0:
+        if len(fib_asset_names) > 0:
             fib_traces_fn = TABLE_REGISTRY[NAMES["fib_traces"]]
             try:
                 with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
                     futures = [
-                        executor.submit(_run_and_discard, fib_traces_fn, subject_id=subject_id, force_update=True)
-                        for subject_id in fib_subject_ids
+                        executor.submit(_run_and_discard, fib_traces_fn, asset_name=asset_name, force_update=True)
+                        for asset_name in fib_asset_names
                     ]
                     for future in as_completed(futures):
                         future.result()
             except Exception:
-                for subject_id in fib_subject_ids:
-                    fib_traces_fn(subject_id=subject_id, force_update=True)
+                for asset_name in fib_asset_names:
+                    fib_traces_fn(asset_name=asset_name, force_update=True)
             gc.collect()
 
         TABLE_REGISTRY[NAMES["curriculum"]](force_update=True)

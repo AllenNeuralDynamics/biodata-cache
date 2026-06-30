@@ -1,11 +1,11 @@
-"""Fiber photometry processed dF/F trace cache table (partitioned by subject_id).
+"""Fiber photometry processed dF/F trace cache table (partitioned by asset_name).
 
 Pulls the processed dF/F time series from the per-session NWB (Zarr) files on S3
-and stores them in wide form, partitioned by subject_id. Each dF/F method is a
-column rather than a row: within a given channel and fiber, all methods share
+and stores them in wide form, one partition per processed asset. Each dF/F method
+is a column rather than a row: within a given channel and fiber, all methods share
 identical timestamps (the same camera frames), so there is no benefit to the long
-layout. Implants are stable per subject over time, making subject_id a safe
-partition key.
+layout. Fibers that have no Probe implant listed in the asset's procedures are
+dropped, as their traces are junk data.
 """
 
 import logging
@@ -26,8 +26,8 @@ _SERIES_RE = re.compile(r"^(G|R|Iso)_(\d+)_(.+)$")
 _PRIMARY_METHOD = "dff-bright_mc-iso-IRLS"
 _FALLBACK_METHOD = "dff-bright"
 _S3_URI_RE = re.compile(r"^s3://([^/]+)/(.+)$")
+_FIBER_NAME_RE = re.compile(r"fiber[\s_]*(\d+)", re.IGNORECASE)
 _MAX_WORKERS = 32
-_CHUNK_SIZE = 10
 
 
 def _log(message: str) -> None:
@@ -85,6 +85,35 @@ def _download_zarr_store(client, bucket: str, nwb_prefix: str) -> dict:
     return store
 
 
+def _fetch_implanted_fibers(asset_name: str) -> set[int]:
+    """Return the set of fiber indices with a Probe implant in the asset's procedures.
+
+    Walks subject_procedures -> surgery procedures -> Probe implant entries and
+    parses the implanted fiber index from the device name (e.g. 'Fiber_0' -> 0).
+    Fibers absent from this set produce junk traces and should be discarded.
+    """
+    from aind_data_access_api.document_db import MetadataDbClient
+
+    client = MetadataDbClient(host=registry.API_GATEWAY_HOST, version="v2")
+    records = client.retrieve_docdb_records(
+        filter_query={"name": asset_name},
+        projection={"procedures.subject_procedures": 1, "_id": 1},
+        limit=0,
+    )
+    fibers: set[int] = set()
+    for record in records:
+        procs_root = record.get("procedures") or {}
+        for subject_proc in procs_root.get("subject_procedures") or []:
+            for proc in subject_proc.get("procedures") or []:
+                if proc.get("object_type") != "Probe implant":
+                    continue
+                device = proc.get("implanted_device") or {}
+                match = _FIBER_NAME_RE.match(device.get("name") or "")
+                if match:
+                    fibers.add(int(match.group(1)))
+    return fibers
+
+
 def _open_nwb_zarr(location: str):
     """Open the NWB Zarr group for an asset given its S3 location.
 
@@ -103,11 +132,12 @@ def _open_nwb_zarr(location: str):
     return zarr.open_consolidated(store, mode="r")
 
 
-def _extract_session_traces(root, asset_name: str, subject_id: str) -> pd.DataFrame:
+def _extract_session_traces(root, implanted_fibers: set[int]) -> pd.DataFrame:
     """Build a wide-form DataFrame of dF/F traces for a single session's NWB root.
 
     One row per (channel, fiber, sample). Timestamps are shared across all dF/F
-    methods for a given channel and fiber, so methods become columns rather than rows.
+    methods for a given channel and fiber, so methods become columns rather than
+    rows. Only fibers present in ``implanted_fibers`` are kept.
     """
     if _FP_GROUP not in root:
         return pd.DataFrame()
@@ -119,6 +149,8 @@ def _extract_session_traces(root, asset_name: str, subject_id: str) -> pd.DataFr
         if match is None:
             continue
         channel, fiber_idx, method = match.group(1), int(match.group(2)), match.group(3)
+        if fiber_idx not in implanted_fibers:
+            continue
         if method not in (_PRIMARY_METHOD, _FALLBACK_METHOD):
             continue
         series = fp[series_name]
@@ -145,108 +177,101 @@ def _extract_session_traces(root, asset_name: str, subject_id: str) -> pd.DataFr
         frames.append(frame)
 
     df = pd.concat(frames, ignore_index=True)
-    df["asset_name"] = asset_name
-    df["subject_id"] = subject_id
-    method_cols = sorted(c for c in df.columns if c not in {"timestamp", "fiber", "channel", "asset_name", "subject_id"})
-    return df[["subject_id", "asset_name", "fiber", "channel", "timestamp"] + method_cols]
+    method_cols = sorted(c for c in df.columns if c not in {"timestamp", "fiber", "channel"})
+    return df[["fiber", "channel", "timestamp"] + method_cols]
 
 
-def _fetch_subject_fib_traces(subject_id: str) -> pd.DataFrame:
-    """Fetch and cache all processed dF/F traces for a subject from S3 NWB files.
+def _fetch_asset_fib_traces(asset_name: str) -> pd.DataFrame:
+    """Fetch and cache the processed dF/F traces for one asset from its S3 NWB file.
 
-    Sessions are flushed to storage every ``_CHUNK_SIZE`` sessions so the
-    in-memory footprint stays bounded. Returns an empty DataFrame; callers
-    should read back from the backend.
+    Only fibers with a Probe implant in the asset's procedures are kept; the rest
+    are junk and are discarded. Returns an empty DataFrame; callers should read
+    back from the backend.
     """
     setup_logging()
-    cache_key = f"{registry.NAMES['fib_traces']}/{subject_id}"
-    _log(f"Updating cache for subject {subject_id}")
+    cache_key = f"{registry.NAMES['fib_traces']}/{asset_name}"
+    _log(f"Updating cache for asset {asset_name}")
 
     basics = asset_basics()
-    subject_assets = basics[basics["subject_id"] == subject_id]
-    subject_assets = subject_assets[
-        subject_assets["modalities"].apply(
-            lambda x: x is not None and not isinstance(x, float) and any("fib" in m.lower() for m in x)
-        )
-    ]
-    subject_assets = subject_assets[subject_assets["data_level"] == "derived"]
+    asset = basics[basics["name"] == asset_name]
 
     registry.BACKEND.clear_partition(cache_key)
 
-    rows = list(subject_assets.iterrows())
-    frames: list[pd.DataFrame] = []
-    chunk_idx = 0
-    n_sessions = 0
+    if asset.empty:
+        _log(f"Asset {asset_name} not found in asset_basics")
+        return pd.DataFrame()
 
-    for i, (_, row) in enumerate(rows):
-        location = row["location"]
-        if not location:
-            continue
-        root = _open_nwb_zarr(location)
-        if root is None:
-            _log(f"No NWB file found for asset {row['name']}")
-            continue
-        session_df = _extract_session_traces(root, row["name"], subject_id)
-        del root
-        if not session_df.empty:
-            frames.append(session_df)
-            n_sessions += 1
+    row = asset.iloc[0]
+    location = row["location"]
+    if not location:
+        _log(f"No location for asset {asset_name}")
+        return pd.DataFrame()
 
-        if frames and (n_sessions % _CHUNK_SIZE == 0 or i == len(rows) - 1):
-            chunk_df = pd.concat(frames, ignore_index=True)
-            chunk_df = chunk_df.sort_values(["asset_name", "channel", "timestamp", "fiber"]).reset_index(drop=True)
-            frames = []
-            registry.BACKEND.write_chunk(cache_key, chunk_df, chunk_idx)
-            del chunk_df
-            chunk_idx += 1
+    implanted_fibers = _fetch_implanted_fibers(asset_name)
+    if not implanted_fibers:
+        _log(f"No fiber implants found in procedures for asset {asset_name}")
+        return pd.DataFrame()
 
-    _log(f"Cached fib traces for subject {subject_id} ({n_sessions} sessions)")
+    root = _open_nwb_zarr(location)
+    if root is None:
+        _log(f"No NWB file found for asset {asset_name}")
+        return pd.DataFrame()
+
+    session_df = _extract_session_traces(root, implanted_fibers)
+    del root
+    if session_df.empty:
+        _log(f"No fiber traces extracted for asset {asset_name}")
+        return pd.DataFrame()
+
+    session_df = session_df.sort_values(["channel", "timestamp", "fiber"]).reset_index(drop=True)
+    registry.BACKEND.write(cache_key, session_df)
+    _log(f"Cached fib traces for asset {asset_name}")
     return pd.DataFrame()
 
 
 @registry.register_table(registry.NAMES["fib_traces"])
 def platform_fib_traces(
-    subject_id: str,
+    asset_name: str,
     force_update: bool = False,
     lazy: bool = False,
 ) -> pd.DataFrame | str:
-    """Return processed fiber photometry dF/F traces for a single subject.
+    """Return processed fiber photometry dF/F traces for a single asset.
 
     One row per sample of every processed dF/F series found in the session NWB
-    files (channels G/R/Iso, each fiber index, every dF/F method variant). Data is
-    cached per subject_id partition.
+    file (channels G/R/Iso, each implanted fiber index, every dF/F method variant).
+    Fibers without a Probe implant in the asset's procedures are excluded. Data is
+    cached per asset_name partition.
 
     Args:
-        subject_id: Subject ID whose fiber traces to fetch.
+        asset_name: Processed asset name whose fiber traces to fetch.
         force_update: If True, bypass cache and pull fresh data from the S3 NWB
-            files, streaming results to the cache in chunks. The full partition is
-            never held in memory, so an empty DataFrame is returned; read again
-            without force_update (or use lazy=True) to retrieve the data.
+            file, writing the result to the cache. An empty DataFrame is returned;
+            read again without force_update (or use lazy=True) to retrieve the data.
         lazy: If True, return the partition's storage location string (for DuckDB)
             instead of loading the DataFrame.
 
     Returns:
-        DataFrame with columns subject_id, asset_name, fiber, channel, timestamp,
-        and one column per dF/F method; the partition location string if lazy=True;
-        or an empty DataFrame if force_update=True (data is written to the cache).
+        DataFrame with columns fiber, channel, timestamp, and one column per dF/F
+        method; the partition location string if lazy=True; or an empty DataFrame
+        if force_update=True (data is written to the cache).
 
     Raises:
-        ValueError: If the cache is empty for the subject and force_update is False.
+        ValueError: If the cache is empty for the asset and force_update is False.
     """
-    cache_key = f"{registry.NAMES['fib_traces']}/{subject_id}"
+    cache_key = f"{registry.NAMES['fib_traces']}/{asset_name}"
 
     if lazy:
         if force_update:
-            _fetch_subject_fib_traces(subject_id)
+            _fetch_asset_fib_traces(asset_name)
         return registry.BACKEND.get_location(cache_key)
 
     if force_update:
-        return _fetch_subject_fib_traces(subject_id)
+        return _fetch_asset_fib_traces(asset_name)
 
     df = registry.BACKEND.read(cache_key)
     if df.empty:
         raise ValueError(
-            f"Cache is empty for subject {subject_id}. Use force_update=True to fetch data from S3."
+            f"Cache is empty for asset {asset_name}. Use force_update=True to fetch data from S3."
         )
 
     return df
@@ -255,8 +280,6 @@ def platform_fib_traces(
 def platform_fib_traces_columns() -> list[Column]:
     """Return platform_fib_traces cache table column definitions."""
     return [
-        Column(name="subject_id", description="Subject ID (partition key)"),
-        Column(name="asset_name", description="Processed asset name identifying the session"),
         Column(name="fiber", description="Fiber index (0-3); joinable with platform_fib fiber 'Fiber <n>'"),
         Column(name="channel", description="Signal channel: G (green), R (red), or Iso (isosbestic)"),
         Column(name="timestamp", description="Sample timestamp in seconds (acquisition clock)"),
