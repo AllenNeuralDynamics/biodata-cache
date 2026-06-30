@@ -26,7 +26,7 @@ from .cache_table_helpers.unique_subject_ids import unique_subject_ids_columns
 from .models import CacheRegistry, CacheTable, CacheTableType
 from .registry import BACKEND, NAMES, TABLE_REGISTRY
 
-_MAX_WORKERS = 8
+_MAX_WORKERS = 4
 
 
 def _run_and_discard(fn, **kwargs) -> None:

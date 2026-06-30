@@ -15,7 +15,7 @@ import pandas as pd
 
 import biodata_cache.registry as registry
 from biodata_cache.models import Column
-from biodata_cache.utils import CacheLogMessage, setup_logging
+from biodata_cache.utils import CacheLogMessage, duckdb_query, setup_logging
 
 
 def _log(table: str, message: str) -> None:
@@ -30,8 +30,7 @@ def _log(table: str, message: str) -> None:
 
 def _read_session_table() -> pd.DataFrame:
     from aind_dynamic_foraging_database import SESSION_DB
-    with duckdb.connect() as con:
-        return con.sql(f"SELECT * FROM read_parquet('{SESSION_DB}')").df()
+    return duckdb_query(f"SELECT * FROM read_parquet('{SESSION_DB}')")
 
 
 def _read_subject_partition(base: str, subject_id: str) -> pd.DataFrame:
@@ -41,8 +40,7 @@ def _read_subject_partition(base: str, subject_id: str) -> pd.DataFrame:
         f"hive_partitioning=true, union_by_name=true)"
     )
     try:
-        with duckdb.connect() as con:
-            return con.sql(query).df()
+        return duckdb_query(query)
     except duckdb.IOException as exc:
         if "No files found" in str(exc):
             return pd.DataFrame()

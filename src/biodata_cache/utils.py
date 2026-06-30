@@ -2,6 +2,7 @@
 
 import logging
 import re
+import time
 
 from pydantic import BaseModel
 
@@ -66,6 +67,34 @@ def normalize_name(name: str) -> str:
     s = re.sub(r"[^a-zA-Z0-9 ]", " ", str(name))
     s = re.sub(r"\s+", " ", s).strip()
     return s.title()
+
+
+_S3_RETRY_ATTEMPTS = 5
+_S3_RETRY_BACKOFF = 2.0
+
+
+def duckdb_query(query: str) -> "pd.DataFrame":
+    """Execute a DuckDB SQL query, retrying on S3 rate-limit (503 SlowDown) errors."""
+    import pandas as pd
+    import duckdb
+
+    for attempt in range(_S3_RETRY_ATTEMPTS):
+        try:
+            with duckdb.connect() as con:
+                return con.sql(query).df()
+        except Exception as exc:
+            msg = str(exc)
+            if "503" in msg or "SlowDown" in msg or "Service Unavailable" in msg:
+                if attempt < _S3_RETRY_ATTEMPTS - 1:
+                    delay = _S3_RETRY_BACKOFF * (2 ** attempt)
+                    logging.warning(
+                        f"S3 rate limit, retrying in {delay:.1f}s "
+                        f"(attempt {attempt + 1}/{_S3_RETRY_ATTEMPTS})"
+                    )
+                    time.sleep(delay)
+                    continue
+            raise
+    raise RuntimeError(f"DuckDB query failed after {_S3_RETRY_ATTEMPTS} attempts")
 
 
 def _merge_key(display_name: str) -> str:

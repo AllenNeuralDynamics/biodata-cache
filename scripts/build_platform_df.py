@@ -15,10 +15,10 @@ import argparse
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import duckdb
 from aind_dynamic_foraging_database import EVENT_DB, TRIAL_DB
 
 from biodata_cache.registry import NAMES, TABLE_REGISTRY
+from biodata_cache.utils import duckdb_query
 
 _TABLE_BASES = {
     "df_trials": TRIAL_DB,
@@ -37,8 +37,7 @@ def _build_sessions() -> list[str]:
 
 def _upstream_partition_subjects(base: str) -> set[str]:
     """Return the set of subject_ids that actually have a partition file under `base`."""
-    with duckdb.connect() as con:
-        rows = con.sql(f"SELECT file FROM glob('{base}/subject_id=*/*.parquet')").df()
+    rows = duckdb_query(f"SELECT file FROM glob('{base}/subject_id=*/*.parquet')")
     found = rows["file"].str.extract(r"subject_id=([^/]+)/")[0].dropna()
     return set(found)
 
