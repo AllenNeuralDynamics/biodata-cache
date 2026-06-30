@@ -41,7 +41,6 @@ def test_update_all_tables_fallback_sequential_on_concurrent_failure(mock_regist
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
         "time_to_qc": MagicMock(),
-        "scientist_rl_fib": MagicMock(),
     }.__getitem__
 
     failed_future = MagicMock()

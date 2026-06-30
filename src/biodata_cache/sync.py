@@ -1,5 +1,6 @@
 """Synchronization utilities for updating all cached data."""
 
+import gc
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .cache_table_helpers.asset_basics import asset_basics_columns
@@ -17,7 +18,6 @@ from .cache_table_helpers.platform_mouselight import platform_mouselight_columns
 from .cache_table_helpers.platform_qc import PLATFORMS, platform_qc_columns
 from .cache_table_helpers.platform_smartspim import assets_smartspim_columns
 from .cache_table_helpers.qc import qc_columns
-from .cache_table_helpers.scientist.scientist_rl_fib import scientist_rl_fib_columns
 from .cache_table_helpers.source_data import source_data_columns
 from .cache_table_helpers.time_to_qc import time_to_qc_columns
 from .cache_table_helpers.unique_genotypes import unique_genotypes_columns
@@ -25,6 +25,20 @@ from .cache_table_helpers.unique_project_names import unique_project_names_colum
 from .cache_table_helpers.unique_subject_ids import unique_subject_ids_columns
 from .models import CacheRegistry, CacheTable, CacheTableType
 from .registry import BACKEND, NAMES, TABLE_REGISTRY
+
+_MAX_WORKERS = 8
+
+
+def _run_and_discard(fn, **kwargs) -> None:
+    """Invoke a table update function and drop its return value.
+
+    The cache helpers return the full DataFrame they just wrote. During a bulk
+    update only the side effect (the cache write) matters, so the return value
+    is discarded immediately. This prevents the parallel Future objects from
+    pinning every subject's DataFrame in memory at once.
+    """
+    fn(**kwargs)
+
 
 
 def publish_cache_registry() -> None:
@@ -176,14 +190,6 @@ def publish_cache_registry() -> None:
             columns=time_to_qc_columns(),
         ),
         CacheTable(
-            name=NAMES["scientist_rl_fib"],
-            description="Cohort summary for scientist RL FIB mice: one row per (fiber_targeted_structure, virus) combination",
-            location=BACKEND.get_location(NAMES["scientist_rl_fib"]),
-            partitioned=False,
-            type=CacheTableType.metadata,
-            columns=scientist_rl_fib_columns(),
-        ),
-        CacheTable(
             name=NAMES["mouselight"],
             description="Janelia MouseLight neuron list (one row per neuron) with label, soma region and tracing UUIDs",
             location=BACKEND.get_location(NAMES["mouselight"]),
@@ -206,7 +212,7 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
 
     Args:
         fast: If True, run fast DocDB-only cache tables (upn, usi, ugt, d2r, upgrade, fib, mouselight, platform_qc).
-        slow: If True, run slow per-subject/S3 cache tables (qc, smartspim, exaspim, df_sessions/df_trials/df_events, fib_traces, curriculum, time_to_qc, scientist_rl_fib).
+        slow: If True, run slow per-subject/S3 cache tables (qc, smartspim, exaspim, df_sessions/df_trials/df_events, fib_traces, curriculum, time_to_qc).
     """
     df_basics = TABLE_REGISTRY[NAMES["basics"]](force_update=True)
 
@@ -227,9 +233,9 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
         if len(subject_ids) > 0:
             qc_table_fn = TABLE_REGISTRY[NAMES["qc"]]
             try:
-                with ThreadPoolExecutor() as executor:
+                with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
                     futures = [
-                        executor.submit(qc_table_fn, subject_id=subject_id, force_update=True)
+                        executor.submit(_run_and_discard, qc_table_fn, subject_id=subject_id, force_update=True)
                         for subject_id in subject_ids
                     ]
                     for future in as_completed(futures):
@@ -237,22 +243,24 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
             except Exception:
                 for subject_id in subject_ids:
                     qc_table_fn(subject_id=subject_id, force_update=True)
+            gc.collect()
 
         TABLE_REGISTRY[NAMES["smartspim"]](force_update=True)
         TABLE_REGISTRY[NAMES["exaspim"]](force_update=True)
         df_sessions = TABLE_REGISTRY[NAMES["df_sessions"]](force_update=True)
         df_subject_ids = df_sessions["subject_id"].dropna().unique() if "subject_id" in df_sessions.columns else []
+        del df_sessions
         if len(df_subject_ids) > 0:
             trials_fn = TABLE_REGISTRY[NAMES["df_trials"]]
             events_fn = TABLE_REGISTRY[NAMES["df_events"]]
             try:
-                with ThreadPoolExecutor() as executor:
+                with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
                     futures = [
-                        executor.submit(trials_fn, subject_id=subject_id, force_update=True)
+                        executor.submit(_run_and_discard, trials_fn, subject_id=subject_id, force_update=True)
                         for subject_id in df_subject_ids
                     ]
                     futures += [
-                        executor.submit(events_fn, subject_id=subject_id, force_update=True)
+                        executor.submit(_run_and_discard, events_fn, subject_id=subject_id, force_update=True)
                         for subject_id in df_subject_ids
                     ]
                     for future in as_completed(futures):
@@ -261,6 +269,7 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
                 for subject_id in df_subject_ids:
                     trials_fn(subject_id=subject_id, force_update=True)
                     events_fn(subject_id=subject_id, force_update=True)
+            gc.collect()
 
         fib_subject_ids = []
         if "modalities" in df_basics.columns and "data_level" in df_basics.columns:
@@ -273,9 +282,9 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
         if len(fib_subject_ids) > 0:
             fib_traces_fn = TABLE_REGISTRY[NAMES["fib_traces"]]
             try:
-                with ThreadPoolExecutor() as executor:
+                with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
                     futures = [
-                        executor.submit(fib_traces_fn, subject_id=subject_id, force_update=True)
+                        executor.submit(_run_and_discard, fib_traces_fn, subject_id=subject_id, force_update=True)
                         for subject_id in fib_subject_ids
                     ]
                     for future in as_completed(futures):
@@ -283,9 +292,9 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
             except Exception:
                 for subject_id in fib_subject_ids:
                     fib_traces_fn(subject_id=subject_id, force_update=True)
+            gc.collect()
 
         TABLE_REGISTRY[NAMES["curriculum"]](force_update=True)
         TABLE_REGISTRY[NAMES["time_to_qc"]](force_update=True)
-        TABLE_REGISTRY[NAMES["scientist_rl_fib"]](force_update=True)
 
     publish_cache_registry()

@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 import boto3
 import duckdb
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from biodata_cache.utils import BDC_VERSION, CacheLogMessage
 
@@ -89,7 +91,16 @@ class S3Backend(Backend):
             json_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{table_name}.json"
 
         parquet_buffer = io.BytesIO()
-        data.to_parquet(parquet_buffer, index=False, compression="zstd")
+        table = pa.Table.from_pandas(data, preserve_index=False)
+        float_cols = [f.name for f in table.schema if pa.types.is_floating(f.type)]
+        dict_cols = [f.name for f in table.schema if f.name not in float_cols]
+        pq.write_table(
+            table,
+            parquet_buffer,
+            compression="zstd",
+            use_dictionary=dict_cols if dict_cols else False,
+            column_encoding={col: "BYTE_STREAM_SPLIT" for col in float_cols} or None,
+        )
         parquet_buffer.seek(0)
 
         self.s3_client.put_object(

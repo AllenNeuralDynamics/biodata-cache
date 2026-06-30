@@ -179,6 +179,8 @@ def _fetch_subject_fib_traces(subject_id: str) -> pd.DataFrame:
             frames.append(session_df)
 
     df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    if not df.empty:
+        df = df.sort_values(["asset_name", "channel", "timestamp", "fiber"]).reset_index(drop=True)
 
     _log(f"Cached fib traces for subject {subject_id} ({len(frames)} sessions, {len(df)} samples)")
     registry.BACKEND.write(cache_key, df)

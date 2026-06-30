@@ -176,7 +176,16 @@ def test_fetch_subject_filters_and_writes(mock_basics, mock_extract, mock_open, 
     mock_registry.BACKEND.__class__.__name__ = "MemoryBackend"
     mock_basics.return_value = _basics_df()
     mock_open.return_value = "ROOT"
-    mock_extract.return_value = pd.DataFrame({"value": [1.0]})
+    mock_extract.return_value = pd.DataFrame(
+        {
+            "subject_id": ["856239"],
+            "asset_name": ["asset_derived"],
+            "fiber": [0],
+            "channel": ["G"],
+            "timestamp": [1.0],
+            "dff-bright": [1.0],
+        }
+    )
 
     result = _fetch_subject_fib_traces("856239")
 
