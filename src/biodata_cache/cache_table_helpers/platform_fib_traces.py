@@ -218,13 +218,17 @@ def platform_fib_traces(
 
     Args:
         subject_id: Subject ID whose fiber traces to fetch.
-        force_update: If True, bypass cache and pull fresh data from the S3 NWB files.
+        force_update: If True, bypass cache and pull fresh data from the S3 NWB
+            files, streaming results to the cache in chunks. The full partition is
+            never held in memory, so an empty DataFrame is returned; read again
+            without force_update (or use lazy=True) to retrieve the data.
         lazy: If True, return the partition's storage location string (for DuckDB)
             instead of loading the DataFrame.
 
     Returns:
         DataFrame with columns subject_id, asset_name, fiber, channel, timestamp,
-        and one column per dF/F method; or the partition location string if lazy=True.
+        and one column per dF/F method; the partition location string if lazy=True;
+        or an empty DataFrame if force_update=True (data is written to the cache).
 
     Raises:
         ValueError: If the cache is empty for the subject and force_update is False.
@@ -236,17 +240,14 @@ def platform_fib_traces(
             _fetch_subject_fib_traces(subject_id)
         return registry.BACKEND.get_location(cache_key)
 
-    df = registry.BACKEND.read(cache_key)
+    if force_update:
+        return _fetch_subject_fib_traces(subject_id)
 
-    if df.empty and not force_update:
+    df = registry.BACKEND.read(cache_key)
+    if df.empty:
         raise ValueError(
             f"Cache is empty for subject {subject_id}. Use force_update=True to fetch data from S3."
         )
-
-    if force_update:
-        df = _fetch_subject_fib_traces(subject_id)
-        if df.empty:
-            df = registry.BACKEND.read(cache_key)
 
     return df
 
