@@ -191,9 +191,9 @@ def test_fetch_subject_filters_and_writes(mock_basics, mock_extract, mock_open, 
 
     # Only the single derived fib asset for subject 856239 is processed.
     mock_open.assert_called_once_with("s3://bucket/abc")
-    mock_registry.BACKEND.write.assert_called_once()
-    assert mock_registry.BACKEND.write.call_args[0][0] == "platform_fib_traces/856239"
-    assert not result.empty
+    mock_registry.BACKEND.write_chunk.assert_called_once()
+    assert mock_registry.BACKEND.write_chunk.call_args[0][0] == "platform_fib_traces/856239"
+    assert result.empty
 
 
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.registry")

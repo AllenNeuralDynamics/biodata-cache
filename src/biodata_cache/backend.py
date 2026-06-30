@@ -131,12 +131,60 @@ class S3Backend(Backend):
             return self._read_multiple(table_name)
         return self._read_single(table_name)
 
+    def clear_partition(self, table_name: str) -> None:
+        """Delete all parquet chunk files in a hive partition."""
+        if "/" not in table_name:
+            return
+        base, value = table_name.split("/", 1)
+        partition_key = HIVE_PARTITION_KEYS[base]
+        prefix = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}/{partition_key}={value}/"
+        paginator = self.s3_client.get_paginator("list_objects_v2")
+        to_delete = []
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                to_delete.append({"Key": obj["Key"]})
+        for i in range(0, len(to_delete), 1000):
+            self.s3_client.delete_objects(
+                Bucket=self.bucket,
+                Delete={"Objects": to_delete[i : i + 1000]},
+            )
+
+    def write_chunk(self, table_name: str, data: pd.DataFrame, chunk_idx: int) -> None:
+        """Append one numbered parquet chunk to a hive partition."""
+        base, value = table_name.split("/", 1)
+        partition_key = HIVE_PARTITION_KEYS[base]
+        s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}/{partition_key}={value}/data_{chunk_idx:04d}.pqt"
+        json_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}.json"
+
+        parquet_buffer = io.BytesIO()
+        table = pa.Table.from_pandas(data, preserve_index=False)
+        float_cols = [f.name for f in table.schema if pa.types.is_floating(f.type)]
+        dict_cols = [f.name for f in table.schema if f.name not in float_cols]
+        pq.write_table(
+            table,
+            parquet_buffer,
+            compression="zstd",
+            use_dictionary=dict_cols if dict_cols else False,
+            column_encoding={col: "BYTE_STREAM_SPLIT" for col in float_cols} or None,
+        )
+        parquet_buffer.seek(0)
+        self.s3_client.put_object(Bucket=self.bucket, Key=s3_key, Body=parquet_buffer.getvalue())
+        logging.info(
+            CacheLogMessage(
+                backend="S3Backend", table=table_name, message=f"Stored chunk {chunk_idx} to s3://{self.bucket}/{s3_key}"
+            ).to_json()
+        )
+        metadata = {"columns": data.columns.tolist()}
+        self.s3_client.put_object(
+            Bucket=self.bucket, Key=json_key, Body=json.dumps(metadata)
+        )
+
     def _read_single(self, table_name: str) -> pd.DataFrame:
         """Fetch a single table from S3."""
         if "/" in table_name:
             base, value = table_name.split("/", 1)
             partition_key = HIVE_PARTITION_KEYS[base]
-            s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}/{partition_key}={value}/data.pqt"
+            s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}/{partition_key}={value}/data*.pqt"
         else:
             s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{table_name}.pqt"
 
@@ -314,6 +362,17 @@ class MemoryBackend(Backend):
     def get_versions_index(self) -> list[str]:
         """Return the list of all available version folders from the in-memory index."""
         return json.loads(self._json_store.get("cache_versions.json", "[]"))
+
+    def clear_partition(self, table_name: str) -> None:
+        """Remove all chunks stored for a partitioned table."""
+        self._store.pop(table_name, None)
+
+    def write_chunk(self, table_name: str, data: pd.DataFrame, chunk_idx: int) -> None:
+        """Append one chunk to the in-memory store for a partitioned table."""
+        existing = self._store.get(table_name, pd.DataFrame())
+        self._store[table_name] = (
+            pd.concat([existing, data], ignore_index=True) if not existing.empty else data.copy()
+        )
 
     def _read_multiple(self, table_names: list[str]) -> pd.DataFrame:
         """Fetch and merge multiple tables from memory."""

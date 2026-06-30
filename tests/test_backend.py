@@ -187,7 +187,7 @@ def test_s3_scurry_partitioned_table(mock_boto3_client, mock_duckdb_query):
     mock_result.to_df.return_value = expected_df
     mock_duckdb_query.return_value = mock_result
     result = S3Backend().read("qc/subject123")
-    assert f"data-asset-cache/{_VF}/qc/subject_id=subject123/data.pqt" in mock_duckdb_query.call_args[0][0]
+    assert f"data-asset-cache/{_VF}/qc/subject_id=subject123/data*.pqt" in mock_duckdb_query.call_args[0][0]
     pd.testing.assert_frame_equal(result, expected_df)
 
 

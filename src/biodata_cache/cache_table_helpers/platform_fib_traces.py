@@ -27,6 +27,7 @@ _PRIMARY_METHOD = "dff-bright_mc-iso-IRLS"
 _FALLBACK_METHOD = "dff-bright"
 _S3_URI_RE = re.compile(r"^s3://([^/]+)/(.+)$")
 _MAX_WORKERS = 32
+_CHUNK_SIZE = 10
 
 
 def _log(message: str) -> None:
@@ -151,7 +152,12 @@ def _extract_session_traces(root, asset_name: str, subject_id: str) -> pd.DataFr
 
 
 def _fetch_subject_fib_traces(subject_id: str) -> pd.DataFrame:
-    """Fetch and cache all processed dF/F traces for a subject from S3 NWB files."""
+    """Fetch and cache all processed dF/F traces for a subject from S3 NWB files.
+
+    Sessions are flushed to storage every ``_CHUNK_SIZE`` sessions so the
+    in-memory footprint stays bounded. Returns an empty DataFrame; callers
+    should read back from the backend.
+    """
     setup_logging()
     cache_key = f"{registry.NAMES['fib_traces']}/{subject_id}"
     _log(f"Updating cache for subject {subject_id}")
@@ -165,8 +171,14 @@ def _fetch_subject_fib_traces(subject_id: str) -> pd.DataFrame:
     ]
     subject_assets = subject_assets[subject_assets["data_level"] == "derived"]
 
-    frames = []
-    for _, row in subject_assets.iterrows():
+    registry.BACKEND.clear_partition(cache_key)
+
+    rows = list(subject_assets.iterrows())
+    frames: list[pd.DataFrame] = []
+    chunk_idx = 0
+    n_sessions = 0
+
+    for i, (_, row) in enumerate(rows):
         location = row["location"]
         if not location:
             continue
@@ -175,16 +187,21 @@ def _fetch_subject_fib_traces(subject_id: str) -> pd.DataFrame:
             _log(f"No NWB file found for asset {row['name']}")
             continue
         session_df = _extract_session_traces(root, row["name"], subject_id)
+        del root
         if not session_df.empty:
             frames.append(session_df)
+            n_sessions += 1
 
-    df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    if not df.empty:
-        df = df.sort_values(["asset_name", "channel", "timestamp", "fiber"]).reset_index(drop=True)
+        if frames and (n_sessions % _CHUNK_SIZE == 0 or i == len(rows) - 1):
+            chunk_df = pd.concat(frames, ignore_index=True)
+            chunk_df = chunk_df.sort_values(["asset_name", "channel", "timestamp", "fiber"]).reset_index(drop=True)
+            frames = []
+            registry.BACKEND.write_chunk(cache_key, chunk_df, chunk_idx)
+            del chunk_df
+            chunk_idx += 1
 
-    _log(f"Cached fib traces for subject {subject_id} ({len(frames)} sessions, {len(df)} samples)")
-    registry.BACKEND.write(cache_key, df)
-    return df
+    _log(f"Cached fib traces for subject {subject_id} ({n_sessions} sessions)")
+    return pd.DataFrame()
 
 
 @registry.register_table(registry.NAMES["fib_traces"])
@@ -228,6 +245,8 @@ def platform_fib_traces(
 
     if force_update:
         df = _fetch_subject_fib_traces(subject_id)
+        if df.empty:
+            df = registry.BACKEND.read(cache_key)
 
     return df
 
