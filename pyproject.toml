@@ -24,7 +24,7 @@ dependencies = [
     'semver',
 ]
 
-[optional-dependencies]
+[project.optional-dependencies]
 sync = [
     'aind-data-access-api[docdb]',
     'aind-dynamic-foraging-database',
