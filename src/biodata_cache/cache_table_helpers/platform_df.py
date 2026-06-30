@@ -40,8 +40,13 @@ def _read_subject_partition(base: str, subject_id: str) -> pd.DataFrame:
         f"'{base}/subject_id={subject_id}/*.parquet', "
         f"hive_partitioning=true, union_by_name=true)"
     )
-    with duckdb.connect() as con:
-        return con.sql(query).df()
+    try:
+        with duckdb.connect() as con:
+            return con.sql(query).df()
+    except duckdb.IOException as exc:
+        if "No files found" in str(exc):
+            return pd.DataFrame()
+        raise
 
 
 @registry.register_table(registry.NAMES["df_sessions"])
@@ -103,7 +108,10 @@ def platform_dynamic_foraging_trials(subject_id: str, force_update: bool = False
         from aind_dynamic_foraging_database import TRIAL_DB
         _log(table, f"Updating cache for subject {subject_id} from upstream trial_table")
         df = _read_subject_partition(TRIAL_DB, str(subject_id))
-        registry.BACKEND.write(cache_key, df)
+        if df.empty:
+            _log(table, f"No upstream trial partition for subject {subject_id}; skipping cache write")
+        else:
+            registry.BACKEND.write(cache_key, df)
 
     return df
 
@@ -138,7 +146,10 @@ def platform_dynamic_foraging_events(subject_id: str, force_update: bool = False
         from aind_dynamic_foraging_database import EVENT_DB
         _log(table, f"Updating cache for subject {subject_id} from upstream event_table")
         df = _read_subject_partition(EVENT_DB, str(subject_id))
-        registry.BACKEND.write(cache_key, df)
+        if df.empty:
+            _log(table, f"No upstream event partition for subject {subject_id}; skipping cache write")
+        else:
+            registry.BACKEND.write(cache_key, df)
 
     return df
 

@@ -176,6 +176,22 @@ def test_trials_subject_id_is_stringified(mock_read, mock_registry):
 
 @patch("biodata_cache.cache_table_helpers.platform_df.registry")
 @patch("biodata_cache.cache_table_helpers.platform_df._read_subject_partition")
+def test_trials_skips_write_when_partition_missing(mock_read, mock_registry):
+    mock_registry.NAMES = {"df_trials": "platform_dynamic_foraging_trials"}
+    mock_registry.BACKEND = MagicMock()
+    mock_registry.BACKEND.__class__.__name__ = "MemoryBackend"
+    mock_registry.BACKEND.read.return_value = pd.DataFrame()
+    mock_read.return_value = pd.DataFrame()
+
+    result = platform_dynamic_foraging_trials(subject_id="sub1", force_update=True)
+
+    mock_read.assert_called_once()
+    mock_registry.BACKEND.write.assert_not_called()
+    assert result.empty
+
+
+@patch("biodata_cache.cache_table_helpers.platform_df.registry")
+@patch("biodata_cache.cache_table_helpers.platform_df._read_subject_partition")
 def test_events_uses_subject_partition_cache_key(mock_read, mock_registry):
     mock_registry.NAMES = {"df_events": "platform_dynamic_foraging_events"}
     mock_registry.BACKEND = MagicMock()
@@ -218,6 +234,43 @@ def test_events_force_update_writes_to_subject_partition(mock_read, mock_registr
     mock_registry.BACKEND.write.assert_called_once()
     write_key = mock_registry.BACKEND.write.call_args[0][0]
     assert write_key == "platform_dynamic_foraging_events/sub1"
+
+
+@patch("biodata_cache.cache_table_helpers.platform_df.registry")
+@patch("biodata_cache.cache_table_helpers.platform_df._read_subject_partition")
+def test_events_skips_write_when_partition_missing(mock_read, mock_registry):
+    mock_registry.NAMES = {"df_events": "platform_dynamic_foraging_events"}
+    mock_registry.BACKEND = MagicMock()
+    mock_registry.BACKEND.__class__.__name__ = "MemoryBackend"
+    mock_registry.BACKEND.read.return_value = pd.DataFrame()
+    mock_read.return_value = pd.DataFrame()
+
+    result = platform_dynamic_foraging_events(subject_id="sub1", force_update=True)
+
+    mock_read.assert_called_once()
+    mock_registry.BACKEND.write.assert_not_called()
+    assert result.empty
+
+
+def test_read_subject_partition_returns_empty_on_missing_files():
+    con = MagicMock()
+    con.sql.side_effect = platform_df.duckdb.IOException("No files found that match the pattern")
+    cm = MagicMock()
+    cm.__enter__.return_value = con
+    with patch.object(platform_df.duckdb, "connect", return_value=cm):
+        result = platform_df._read_subject_partition("s3://bucket/trial_table", "sub1")
+
+    assert result.empty
+
+
+def test_read_subject_partition_reraises_other_io_errors():
+    con = MagicMock()
+    con.sql.side_effect = platform_df.duckdb.IOException("Access Denied")
+    cm = MagicMock()
+    cm.__enter__.return_value = con
+    with patch.object(platform_df.duckdb, "connect", return_value=cm):
+        with pytest.raises(platform_df.duckdb.IOException, match="Access Denied"):
+            platform_df._read_subject_partition("s3://bucket/trial_table", "sub1")
 
 
 def test_columns_lists_are_nonempty_and_have_keys():
