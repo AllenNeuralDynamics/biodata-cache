@@ -24,11 +24,16 @@ dependencies = [
     'semver',
 ]
 
-[dependency-groups]
-dev = [
+[optional-dependencies]
+sync = [
     'aind-data-access-api[docdb]',
     'aind-dynamic-foraging-database',
     'zarr<3',
+]
+
+[dependency-groups]
+dev = [
+    'biodata-cache[sync]',
     'ruff',
     'coverage',
     'interrogate',
