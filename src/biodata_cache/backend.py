@@ -70,6 +70,10 @@ class Backend(ABC):
         """Return the list of all available version folders from cache_versions.json."""
         pass  # pragma: no cover
 
+    def partition_exists(self, table_name: str) -> bool:
+        """Return True if data already exists for the given partition."""
+        return False
+
 
 class S3Backend(Backend):
     """Stores and retrieves caches using AWS S3 with parquet files."""
@@ -148,6 +152,16 @@ class S3Backend(Backend):
                 Bucket=self.bucket,
                 Delete={"Objects": to_delete[i : i + 1000]},
             )
+
+    def partition_exists(self, table_name: str) -> bool:
+        """Return True if any parquet chunk exists for a hive partition."""
+        if "/" not in table_name:
+            return False
+        base, value = table_name.split("/", 1)
+        partition_key = HIVE_PARTITION_KEYS[base]
+        prefix = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}/{partition_key}={value}/"
+        resp = self.s3_client.list_objects_v2(Bucket=self.bucket, Prefix=prefix, MaxKeys=1)
+        return resp.get("KeyCount", 0) > 0
 
     def write_chunk(self, table_name: str, data: pd.DataFrame, chunk_idx: int) -> None:
         """Append one numbered parquet chunk to a hive partition."""
@@ -362,6 +376,11 @@ class MemoryBackend(Backend):
     def get_versions_index(self) -> list[str]:
         """Return the list of all available version folders from the in-memory index."""
         return json.loads(self._json_store.get("cache_versions.json", "[]"))
+
+    def partition_exists(self, table_name: str) -> bool:
+        """Return True if a partition has stored data in memory."""
+        df = self._store.get(table_name)
+        return df is not None and not df.empty
 
     def clear_partition(self, table_name: str) -> None:
         """Remove all chunks stored for a partitioned table."""

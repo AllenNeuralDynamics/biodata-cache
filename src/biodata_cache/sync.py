@@ -279,6 +279,11 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
             fib_subject_ids = (
                 df_basics[fib_mask & (df_basics["data_level"] == "derived")]["subject_id"].dropna().unique()
             )
+        fib_subject_ids = [
+            subject_id
+            for subject_id in fib_subject_ids
+            if not BACKEND.partition_exists(f"{NAMES['fib_traces']}/{subject_id}")
+        ]
         if len(fib_subject_ids) > 0:
             fib_traces_fn = TABLE_REGISTRY[NAMES["fib_traces"]]
             try:
