@@ -285,18 +285,31 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
             if not BACKEND.partition_exists(f"{NAMES['fib_traces']}/{asset_name}")
         ]
         if len(fib_asset_names) > 0:
+            fib_location_map = {}
+            if "name" in df_basics.columns and "location" in df_basics.columns:
+                fib_location_map = dict(zip(df_basics["name"], df_basics["location"], strict=False))
             fib_traces_fn = TABLE_REGISTRY[NAMES["fib_traces"]]
             try:
                 with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
                     futures = [
-                        executor.submit(_run_and_discard, fib_traces_fn, asset_name=asset_name, force_update=True)
+                        executor.submit(
+                            _run_and_discard,
+                            fib_traces_fn,
+                            asset_name=asset_name,
+                            location=fib_location_map.get(asset_name),
+                            force_update=True,
+                        )
                         for asset_name in fib_asset_names
                     ]
                     for future in as_completed(futures):
                         future.result()
             except Exception:
                 for asset_name in fib_asset_names:
-                    fib_traces_fn(asset_name=asset_name, force_update=True)
+                    fib_traces_fn(
+                        asset_name=asset_name,
+                        location=fib_location_map.get(asset_name),
+                        force_update=True,
+                    )
             gc.collect()
 
         TABLE_REGISTRY[NAMES["curriculum"]](force_update=True)

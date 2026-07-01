@@ -510,6 +510,7 @@ def _fib_basics():
         {
             "subject_id": ["sub1", "sub2"],
             "name": ["asset1", "asset2"],
+            "location": ["s3://bucket/asset1", "s3://bucket/asset2"],
             "modalities": [["fib"], ["behavior"]],
             "data_level": ["derived", "derived"],
         }
@@ -525,7 +526,9 @@ def test_fib_traces_called_per_fib_asset(mock_registry, mock_publish):
 
     update_all_tables()
 
-    mock_fib_traces.assert_called_once_with(asset_name="asset1", force_update=True)
+    mock_fib_traces.assert_called_once_with(
+        asset_name="asset1", location="s3://bucket/asset1", force_update=True
+    )
 
 
 @patch("biodata_cache.sync.publish_cache_registry")
@@ -542,5 +545,5 @@ def test_fib_traces_fallback_sequential_on_concurrent_failure(mock_registry, moc
 
     update_all_tables()
 
-    mock_fib_traces.assert_any_call(asset_name="asset1", force_update=True)
+    mock_fib_traces.assert_any_call(asset_name="asset1", location="s3://bucket/asset1", force_update=True)
 

@@ -6,12 +6,12 @@ import logging
 from abc import ABC, abstractmethod
 
 import boto3
-import duckdb
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+from botocore.exceptions import ClientError
 
-from biodata_cache.utils import BDC_VERSION, CacheLogMessage
+from biodata_cache.utils import BDC_VERSION, CacheLogMessage, duckdb_query
 
 _CACHE_ROOT = "data-asset-cache"
 _VERSION_FOLDER = f"bdc-v{BDC_VERSION}"
@@ -24,6 +24,11 @@ HIVE_PARTITION_KEYS = {
     "platform_dynamic_foraging_events": "subject_id",
     "platform_fib_traces": "asset_name",
 }
+
+# S3 error codes that mean the object genuinely does not exist (a legitimate empty
+# cache) as opposed to a read failure.
+_NOT_FOUND_CODES = {"404", "NoSuchKey", "NotFound"}
+
 
 
 class Backend(ABC):
@@ -193,8 +198,37 @@ class S3Backend(Backend):
             Bucket=self.bucket, Key=json_key, Body=json.dumps(metadata)
         )
 
+    def _cache_object_exists(self, table_name: str) -> bool:
+        """Return True if the cache object(s) for a table exist in S3.
+
+        Used to distinguish a genuinely absent cache (empty, safe to (re)populate)
+        from a read failure (which must be raised, never silently treated as empty).
+        Raises on ambiguous S3 errors so failures are never mistaken for absence.
+        """
+        if "/" in table_name:
+            base, value = table_name.split("/", 1)
+            partition_key = HIVE_PARTITION_KEYS[base]
+            prefix = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}/{partition_key}={value}/"
+            resp = self.s3_client.list_objects_v2(Bucket=self.bucket, Prefix=prefix, MaxKeys=1)
+            return resp.get("KeyCount", 0) > 0
+
+        key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{table_name}.pqt"
+        try:
+            self.s3_client.head_object(Bucket=self.bucket, Key=key)
+            return True
+        except ClientError as exc:
+            code = str(exc.response.get("Error", {}).get("Code", ""))
+            if code in _NOT_FOUND_CODES:
+                return False
+            raise
+
     def _read_single(self, table_name: str) -> pd.DataFrame:
-        """Fetch a single table from S3."""
+        """Fetch a single table from S3.
+
+        A genuinely absent cache object returns an empty DataFrame; any other read
+        failure is raised rather than silently returned as empty, so a transient
+        error can never masquerade as an empty cache and trigger a re-fetch.
+        """
         if "/" in table_name:
             base, value = table_name.split("/", 1)
             partition_key = HIVE_PARTITION_KEYS[base]
@@ -202,13 +236,13 @@ class S3Backend(Backend):
         else:
             s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{table_name}.pqt"
 
+        query = f"""
+            SELECT * FROM read_parquet(
+                's3://{self.bucket}/{s3_key}'
+            )
+        """
         try:
-            query = f"""
-                SELECT * FROM read_parquet(
-                    's3://{self.bucket}/{s3_key}'
-                )
-            """
-            result = duckdb.query(query).to_df()
+            result = duckdb_query(query)
             logging.info(
                 CacheLogMessage(
                     backend="S3Backend", table=table_name, message=f"Retrieved cache from s3://{self.bucket}/{s3_key}"
@@ -216,12 +250,20 @@ class S3Backend(Backend):
             )
             return result
         except Exception as e:
-            logging.warning(
+            if not self._cache_object_exists(table_name):
+                logging.info(
+                    CacheLogMessage(
+                        backend="S3Backend", table=table_name, message=f"No cache found at s3://{self.bucket}/{s3_key}"
+                    ).to_json()
+                )
+                return pd.DataFrame()
+            logging.error(
                 CacheLogMessage(
                     backend="S3Backend", table=table_name, message=f"Error fetching from cache {s3_key}: {e}"
                 ).to_json()
             )
-            return pd.DataFrame()
+            raise
+
 
     def get_location(self, table_name: str, partitioned: bool = False) -> str:
         """Return the S3 URI for a given table."""
@@ -295,7 +337,7 @@ class S3Backend(Backend):
                     for path, asset in zip(parquet_paths, asset_names, strict=False)
                 ]
             )
-            result = duckdb.query(union_query).to_df()
+            result = duckdb_query(union_query)
             logging.info(
                 CacheLogMessage(
                     backend="S3Backend", table="merged", message=f"Merged {len(table_names)} tables from S3"
@@ -303,10 +345,17 @@ class S3Backend(Backend):
             )
             return result
         except Exception as e:
-            logging.warning(
+            if any(not self._cache_object_exists(tbl_name) for tbl_name in table_names):
+                logging.info(
+                    CacheLogMessage(
+                        backend="S3Backend", table="merged", message="No cache found for one or more merged tables"
+                    ).to_json()
+                )
+                return pd.DataFrame()
+            logging.error(
                 CacheLogMessage(backend="S3Backend", table="merged", message=f"Error merging tables: {e}").to_json()
             )
-            return pd.DataFrame()
+            raise
 
 
 class MemoryBackend(Backend):

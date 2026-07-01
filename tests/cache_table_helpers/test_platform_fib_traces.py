@@ -208,6 +208,34 @@ def test_fetch_asset_filters_and_writes(mock_basics, mock_extract, mock_open, mo
 
 
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.registry")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces._fetch_implanted_fibers")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces._open_nwb_zarr")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces._extract_session_traces")
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces.asset_basics")
+def test_fetch_asset_with_location_skips_asset_basics(mock_basics, mock_extract, mock_open, mock_fibers, mock_registry):
+    mock_registry.NAMES = {"fib_traces": "platform_fib_traces"}
+    mock_registry.BACKEND = MagicMock()
+    mock_registry.BACKEND.__class__.__name__ = "MemoryBackend"
+    mock_fibers.return_value = {0}
+    mock_open.return_value = "ROOT"
+    mock_extract.return_value = pd.DataFrame(
+        {
+            "fiber": [0],
+            "channel": ["G"],
+            "timestamp": [1.0],
+            "dff-bright": [1.0],
+        }
+    )
+
+    result = _fetch_asset_fib_traces("asset_derived", location="s3://bucket/xyz")
+
+    mock_basics.assert_not_called()
+    mock_open.assert_called_once_with("s3://bucket/xyz")
+    mock_registry.BACKEND.write.assert_called_once()
+    assert result.empty
+
+
+@patch("biodata_cache.cache_table_helpers.platform_fib_traces.registry")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces._open_nwb_zarr")
 @patch("biodata_cache.cache_table_helpers.platform_fib_traces.asset_basics")
 def test_fetch_asset_skips_unknown_asset(mock_basics, mock_open, mock_registry):
@@ -355,7 +383,7 @@ def test_platform_fib_traces_force_update_fetches(mock_registry, mock_fetch):
 
     result = platform_fib_traces(asset_name="asset_derived", force_update=True)
 
-    mock_fetch.assert_called_once_with("asset_derived")
+    mock_fetch.assert_called_once_with("asset_derived", location=None)
     assert not result.empty
 
 
@@ -382,7 +410,7 @@ def test_platform_fib_traces_lazy_force_update_fetches(mock_registry, mock_fetch
 
     result = platform_fib_traces(asset_name="asset_derived", lazy=True, force_update=True)
 
-    mock_fetch.assert_called_once_with("asset_derived")
+    mock_fetch.assert_called_once_with("asset_derived", location=None)
     assert result == "s3://loc/data.pqt"
 
 

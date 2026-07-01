@@ -181,28 +181,33 @@ def _extract_session_traces(root, implanted_fibers: set[int]) -> pd.DataFrame:
     return df[["fiber", "channel", "timestamp"] + method_cols]
 
 
-def _fetch_asset_fib_traces(asset_name: str) -> pd.DataFrame:
+def _fetch_asset_fib_traces(asset_name: str, location: str | None = None) -> pd.DataFrame:
     """Fetch and cache the processed dF/F traces for one asset from its S3 NWB file.
 
     Only fibers with a Probe implant in the asset's procedures are kept; the rest
     are junk and are discarded. Returns an empty DataFrame; callers should read
     back from the backend.
+
+    Args:
+        asset_name: Processed asset name whose fiber traces to fetch.
+        location: The asset's S3 location. When provided (bulk sync path), the
+            full asset_basics table is not read; when None (single-asset path),
+            the location is looked up from asset_basics.
     """
     setup_logging()
     cache_key = f"{registry.NAMES['fib_traces']}/{asset_name}"
     _log(f"Updating cache for asset {asset_name}")
 
-    basics = asset_basics()
-    asset = basics[basics["name"] == asset_name]
-
     registry.BACKEND.clear_partition(cache_key)
 
-    if asset.empty:
-        _log(f"Asset {asset_name} not found in asset_basics")
-        return pd.DataFrame()
+    if location is None:
+        basics = asset_basics()
+        asset = basics[basics["name"] == asset_name]
+        if asset.empty:
+            _log(f"Asset {asset_name} not found in asset_basics")
+            return pd.DataFrame()
+        location = asset.iloc[0]["location"]
 
-    row = asset.iloc[0]
-    location = row["location"]
     if not location:
         _log(f"No location for asset {asset_name}")
         return pd.DataFrame()
@@ -234,6 +239,7 @@ def platform_fib_traces(
     asset_name: str,
     force_update: bool = False,
     lazy: bool = False,
+    location: str | None = None,
 ) -> pd.DataFrame | str:
     """Return processed fiber photometry dF/F traces for a single asset.
 
@@ -249,6 +255,9 @@ def platform_fib_traces(
             read again without force_update (or use lazy=True) to retrieve the data.
         lazy: If True, return the partition's storage location string (for DuckDB)
             instead of loading the DataFrame.
+        location: Optional S3 location of the asset. When provided during a
+            force_update, the full asset_basics table is not read (used by the
+            bulk sync to avoid re-reading asset_basics once per asset).
 
     Returns:
         DataFrame with columns fiber, channel, timestamp, and one column per dF/F
@@ -262,11 +271,11 @@ def platform_fib_traces(
 
     if lazy:
         if force_update:
-            _fetch_asset_fib_traces(asset_name)
+            _fetch_asset_fib_traces(asset_name, location=location)
         return registry.BACKEND.get_location(cache_key)
 
     if force_update:
-        return _fetch_asset_fib_traces(asset_name)
+        return _fetch_asset_fib_traces(asset_name, location=location)
 
     df = registry.BACKEND.read(cache_key)
     if df.empty:

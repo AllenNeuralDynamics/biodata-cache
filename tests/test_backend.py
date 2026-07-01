@@ -4,11 +4,18 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+from botocore.exceptions import ClientError
 
 from biodata_cache.backend import Backend, MemoryBackend, S3Backend
 from biodata_cache.utils import BDC_VERSION
 
 _VF = f"bdc-v{BDC_VERSION}"
+
+
+def _not_found_error() -> ClientError:
+    """Build a 404 ClientError as boto3 head_object raises for a missing key."""
+    return ClientError({"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject")
+
 
 
 # --- Backend abstract class ---
@@ -163,14 +170,12 @@ def test_s3_hide_platform_qc_metadata(mock_boto3_client):
     assert json_call["Key"] == f"data-asset-cache/{_VF}/platform_qc.json"
 
 
-@patch("biodata_cache.backend.duckdb.query")
+@patch("biodata_cache.backend.duckdb_query")
 @patch("biodata_cache.backend.boto3.client")
 def test_s3_scurry(mock_boto3_client, mock_duckdb_query):
     mock_boto3_client.return_value = MagicMock()
     expected_df = pd.DataFrame({"col1": [1, 2, 3]})
-    mock_result = MagicMock()
-    mock_result.to_df.return_value = expected_df
-    mock_duckdb_query.return_value = mock_result
+    mock_duckdb_query.return_value = expected_df
     backend = S3Backend()
     result = backend.read("test_table")
     mock_duckdb_query.assert_called_once()
@@ -178,14 +183,12 @@ def test_s3_scurry(mock_boto3_client, mock_duckdb_query):
     pd.testing.assert_frame_equal(result, expected_df)
 
 
-@patch("biodata_cache.backend.duckdb.query")
+@patch("biodata_cache.backend.duckdb_query")
 @patch("biodata_cache.backend.boto3.client")
 def test_s3_scurry_partitioned_table(mock_boto3_client, mock_duckdb_query):
     mock_boto3_client.return_value = MagicMock()
     expected_df = pd.DataFrame({"metric": ["a"]})
-    mock_result = MagicMock()
-    mock_result.to_df.return_value = expected_df
-    mock_duckdb_query.return_value = mock_result
+    mock_duckdb_query.return_value = expected_df
     result = S3Backend().read("qc/subject123")
     assert f"data-asset-cache/{_VF}/qc/subject_id=subject123/data*.pqt" in mock_duckdb_query.call_args[0][0]
     pd.testing.assert_frame_equal(result, expected_df)
@@ -207,26 +210,37 @@ def test_s3_get_location_platform_qc_partition(mock_boto3_client):
     assert result == f"s3://allen-data-views/data-asset-cache/{_VF}/platform_qc/platform=spim/data.pqt"
 
 
-@patch("biodata_cache.backend.duckdb.query")
+@patch("biodata_cache.backend.duckdb_query")
 @patch("biodata_cache.backend.boto3.client")
-def test_s3_scurry_handles_error(mock_boto3_client, mock_duckdb_query):
-    mock_boto3_client.return_value = MagicMock()
-    mock_duckdb_query.side_effect = Exception("S3 access error")
+def test_s3_scurry_missing_object_returns_empty(mock_boto3_client, mock_duckdb_query):
+    mock_s3 = MagicMock()
+    mock_s3.head_object.side_effect = _not_found_error()
+    mock_boto3_client.return_value = mock_s3
+    mock_duckdb_query.side_effect = Exception("read failed")
     result = S3Backend().read("nonexistent_table")
     assert result.empty
     assert isinstance(result, pd.DataFrame)
 
 
-@patch("biodata_cache.backend.duckdb.query")
+@patch("biodata_cache.backend.duckdb_query")
+@patch("biodata_cache.backend.boto3.client")
+def test_s3_scurry_read_error_raises(mock_boto3_client, mock_duckdb_query):
+    mock_s3 = MagicMock()
+    mock_s3.head_object.return_value = {"ContentLength": 1}
+    mock_boto3_client.return_value = mock_s3
+    mock_duckdb_query.side_effect = Exception("Connection reset by peer")
+    with pytest.raises(Exception, match="Connection reset"):
+        S3Backend().read("some_table")
+
+
+@patch("biodata_cache.backend.duckdb_query")
 @patch("biodata_cache.backend.boto3.client")
 def test_s3_scurry_multiple_tables(mock_boto3_client, mock_duckdb_query):
     mock_boto3_client.return_value = MagicMock()
     expected_df = pd.DataFrame(
         {"col1": [1, 2, 3, 4], "col2": ["a", "b", "c", "d"], "asset_name": ["table1", "table1", "table2", "table2"]}
     )
-    mock_result = MagicMock()
-    mock_result.to_df.return_value = expected_df
-    mock_duckdb_query.return_value = mock_result
+    mock_duckdb_query.return_value = expected_df
     result = S3Backend().read(["table1", "table2"])
     mock_duckdb_query.assert_called_once()
     query_call = mock_duckdb_query.call_args[0][0]
@@ -236,11 +250,60 @@ def test_s3_scurry_multiple_tables(mock_boto3_client, mock_duckdb_query):
     pd.testing.assert_frame_equal(result, expected_df)
 
 
-@patch("biodata_cache.backend.duckdb.query")
+@patch("biodata_cache.backend.duckdb_query")
 @patch("biodata_cache.backend.boto3.client")
-def test_s3_scurry_multiple_handles_error(mock_boto3_client, mock_duckdb_query):
-    mock_boto3_client.return_value = MagicMock()
-    mock_duckdb_query.side_effect = Exception("Merge error")
+def test_s3_scurry_multiple_missing_returns_empty(mock_boto3_client, mock_duckdb_query):
+    mock_s3 = MagicMock()
+    mock_s3.head_object.side_effect = _not_found_error()
+    mock_boto3_client.return_value = mock_s3
+    mock_duckdb_query.side_effect = Exception("read failed")
     result = S3Backend().read(["table1", "table2"])
     assert result.empty
     assert isinstance(result, pd.DataFrame)
+
+
+@patch("biodata_cache.backend.duckdb_query")
+@patch("biodata_cache.backend.boto3.client")
+def test_s3_scurry_multiple_read_error_raises(mock_boto3_client, mock_duckdb_query):
+    mock_s3 = MagicMock()
+    mock_s3.head_object.return_value = {"ContentLength": 1}
+    mock_boto3_client.return_value = mock_s3
+    mock_duckdb_query.side_effect = Exception("Merge error")
+    with pytest.raises(Exception, match="Merge error"):
+        S3Backend().read(["table1", "table2"])
+
+
+@patch("biodata_cache.backend.duckdb_query")
+@patch("biodata_cache.backend.boto3.client")
+def test_s3_scurry_partitioned_missing_returns_empty(mock_boto3_client, mock_duckdb_query):
+    mock_s3 = MagicMock()
+    mock_s3.list_objects_v2.return_value = {"KeyCount": 0}
+    mock_boto3_client.return_value = mock_s3
+    mock_duckdb_query.side_effect = Exception("read failed")
+    result = S3Backend().read("qc/subject1")
+    assert result.empty
+    assert isinstance(result, pd.DataFrame)
+
+
+@patch("biodata_cache.backend.duckdb_query")
+@patch("biodata_cache.backend.boto3.client")
+def test_s3_scurry_partitioned_read_error_raises(mock_boto3_client, mock_duckdb_query):
+    mock_s3 = MagicMock()
+    mock_s3.list_objects_v2.return_value = {"KeyCount": 1}
+    mock_boto3_client.return_value = mock_s3
+    mock_duckdb_query.side_effect = Exception("read failed")
+    with pytest.raises(Exception, match="read failed"):
+        S3Backend().read("qc/subject1")
+
+
+@patch("biodata_cache.backend.duckdb_query")
+@patch("biodata_cache.backend.boto3.client")
+def test_s3_scurry_non_404_head_error_raises(mock_boto3_client, mock_duckdb_query):
+    mock_s3 = MagicMock()
+    mock_s3.head_object.side_effect = ClientError(
+        {"Error": {"Code": "500", "Message": "Internal Error"}}, "HeadObject"
+    )
+    mock_boto3_client.return_value = mock_s3
+    mock_duckdb_query.side_effect = Exception("read failed")
+    with pytest.raises(ClientError):
+        S3Backend().read("some_table")
