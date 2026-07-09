@@ -47,6 +47,8 @@ NAMES = {
     "upgrade": "metadata_upgrade",
     "fib": "platform_fib",
     "fib_traces": "platform_fib_traces",
+    "ecephys_spikes": "platform_ecephys_spikes",
+    "ecephys_units": "platform_ecephys_units",
     "core": "metadata_core",
     "df_sessions": "platform_dynamic_foraging_sessions",
     "df_trials": "platform_dynamic_foraging_trials",

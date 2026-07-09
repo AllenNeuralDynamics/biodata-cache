@@ -23,6 +23,8 @@ HIVE_PARTITION_KEYS = {
     "platform_dynamic_foraging_trials": "subject_id",
     "platform_dynamic_foraging_events": "subject_id",
     "platform_fib_traces": "asset_name",
+    "platform_ecephys_spikes": "asset_name",
+    "platform_ecephys_units": "asset_name",
 }
 
 # S3 error codes that mean the object genuinely does not exist (a legitimate empty

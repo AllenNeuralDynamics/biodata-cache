@@ -7,6 +7,8 @@ from biodata_cache.cache_table_helpers import (  # noqa: F401
     metadata_core,
     metadata_upgrade,
     platform_df,
+    platform_ecephys_spikes,
+    platform_ecephys_units,
     platform_exaspim,
     platform_fib,
     platform_fib_traces,

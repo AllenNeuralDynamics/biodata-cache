@@ -224,7 +224,7 @@ def test_published_json_contains_nine_tables(mock_backend):
     publish_cache_registry()
     payload = json.loads(mock_backend.put_json.call_args[0][1])
     assert "tables" in payload
-    assert len(payload["tables"]) == 18
+    assert len(payload["tables"]) == 20
 
 
 @patch("biodata_cache.sync.BACKEND")
@@ -275,6 +275,8 @@ def test_non_qc_table_fns_are_metadata_type(mock_backend):
         "platform_dynamic_foraging_trials",
         "platform_dynamic_foraging_events",
         "platform_fib_traces",
+        "platform_ecephys_spikes",
+        "platform_ecephys_units",
         "platform_mouselight",
     }
     for cache_table in payload["tables"]:
@@ -287,7 +289,7 @@ def test_non_qc_table_fns_are_metadata_type(mock_backend):
 def test_get_location_called_for_each_table(mock_backend):
     mock_backend.get_location.return_value = "s3://bucket/path"
     publish_cache_registry()
-    assert mock_backend.get_location.call_count == 18
+    assert mock_backend.get_location.call_count == 20
 
 @patch("biodata_cache.sync.BACKEND")
 def test_qc_location_uses_partitioned_flag(mock_backend):

@@ -11,6 +11,8 @@ from .cache_table_helpers.platform_df import (
     platform_dynamic_foraging_sessions_columns,
     platform_dynamic_foraging_trials_columns,
 )
+from .cache_table_helpers.platform_ecephys_spikes import platform_ecephys_spikes_columns
+from .cache_table_helpers.platform_ecephys_units import platform_ecephys_units_columns
 from .cache_table_helpers.platform_exaspim import platform_exaspim_columns
 from .cache_table_helpers.platform_fib import platform_fib_columns
 from .cache_table_helpers.platform_fib_traces import platform_fib_traces_columns
@@ -139,6 +141,24 @@ def publish_cache_registry() -> None:
             columns=platform_fib_traces_columns(),
         ),
         CacheTable(
+            name=NAMES["ecephys_spikes"],
+            description="Sorted ecephys spike times (one row per spike), partitioned by asset_name",
+            location=BACKEND.get_location("platform_ecephys_spikes", partitioned=True),
+            partitioned=True,
+            partition_key="asset_name",
+            type=CacheTableType.platform,
+            columns=platform_ecephys_spikes_columns(),
+        ),
+        CacheTable(
+            name=NAMES["ecephys_units"],
+            description="Sorted ecephys units with quality/waveform metrics (one row per unit), partitioned by asset_name",
+            location=BACKEND.get_location("platform_ecephys_units", partitioned=True),
+            partitioned=True,
+            partition_key="asset_name",
+            type=CacheTableType.platform,
+            columns=platform_ecephys_units_columns(),
+        ),
+        CacheTable(
             name=NAMES["df_sessions"],
             description="Dynamic foraging session table (one row per session); mirrors upstream aind-dynamic-foraging-database",
             location=BACKEND.get_location(NAMES["df_sessions"]),
@@ -212,7 +232,7 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
 
     Args:
         fast: If True, run fast DocDB-only cache tables (upn, usi, ugt, d2r, upgrade, fib, mouselight, platform_qc).
-        slow: If True, run slow per-subject/S3 cache tables (qc, smartspim, exaspim, df_sessions/df_trials/df_events, fib_traces, curriculum, time_to_qc).
+        slow: If True, run slow per-subject/S3 cache tables (qc, smartspim, exaspim, df_sessions/df_trials/df_events, fib_traces, ecephys_spikes, ecephys_units, curriculum, time_to_qc).
     """
     df_basics = TABLE_REGISTRY[NAMES["basics"]](force_update=True)
 
@@ -308,6 +328,78 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
                     fib_traces_fn(
                         asset_name=asset_name,
                         location=fib_location_map.get(asset_name),
+                        force_update=True,
+                    )
+            gc.collect()
+
+        ecephys_asset_names = []
+        if "modalities" in df_basics.columns and "data_level" in df_basics.columns:
+            ecephys_mask = df_basics["modalities"].apply(
+                lambda x: x is not None and not isinstance(x, float) and any("ecephys" in m.lower() for m in x)
+            )
+            ecephys_asset_names = (
+                df_basics[ecephys_mask & (df_basics["data_level"] == "derived")]["name"].dropna().unique().tolist()
+            )
+        ecephys_location_map = {}
+        if "name" in df_basics.columns and "location" in df_basics.columns:
+            ecephys_location_map = dict(zip(df_basics["name"], df_basics["location"], strict=False))
+
+        spikes_asset_names = [
+            asset_name
+            for asset_name in ecephys_asset_names
+            if not BACKEND.partition_exists(f"{NAMES['ecephys_spikes']}/{asset_name}")
+        ]
+        if len(spikes_asset_names) > 0:
+            ecephys_spikes_fn = TABLE_REGISTRY[NAMES["ecephys_spikes"]]
+            try:
+                with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
+                    futures = [
+                        executor.submit(
+                            _run_and_discard,
+                            ecephys_spikes_fn,
+                            asset_name=asset_name,
+                            location=ecephys_location_map.get(asset_name),
+                            force_update=True,
+                        )
+                        for asset_name in spikes_asset_names
+                    ]
+                    for future in as_completed(futures):
+                        future.result()
+            except Exception:
+                for asset_name in spikes_asset_names:
+                    ecephys_spikes_fn(
+                        asset_name=asset_name,
+                        location=ecephys_location_map.get(asset_name),
+                        force_update=True,
+                    )
+            gc.collect()
+
+        units_asset_names = [
+            asset_name
+            for asset_name in ecephys_asset_names
+            if not BACKEND.partition_exists(f"{NAMES['ecephys_units']}/{asset_name}")
+        ]
+        if len(units_asset_names) > 0:
+            ecephys_units_fn = TABLE_REGISTRY[NAMES["ecephys_units"]]
+            try:
+                with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
+                    futures = [
+                        executor.submit(
+                            _run_and_discard,
+                            ecephys_units_fn,
+                            asset_name=asset_name,
+                            location=ecephys_location_map.get(asset_name),
+                            force_update=True,
+                        )
+                        for asset_name in units_asset_names
+                    ]
+                    for future in as_completed(futures):
+                        future.result()
+            except Exception:
+                for asset_name in units_asset_names:
+                    ecephys_units_fn(
+                        asset_name=asset_name,
+                        location=ecephys_location_map.get(asset_name),
                         force_update=True,
                     )
             gc.collect()
