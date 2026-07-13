@@ -16,6 +16,7 @@ with a ``/units`` group contributes rows, and files without one are skipped.
 import json
 import logging
 import re
+import gc
 from concurrent.futures import ThreadPoolExecutor
 
 import boto3
@@ -181,9 +182,11 @@ def _extremum_waveforms(
 
     ``waveform_mean`` stores every unit's mean waveform across all probe channels
     (``num_units x num_samples x num_channels``), which can be many GiB. Only the
-    extremum (peak-amplitude) channel is needed per unit, so the cube is read one
-    unit-chunk band at a time and reduced immediately, bounding peak memory to a
-    single band rather than the whole array.
+    extremum (peak-amplitude) channel is needed per unit. zarr cannot decompress
+    less than a whole chunk, and the cube is chunked along the unit axis, so the
+    smallest safe read is one unit-chunk band: each band is downloaded, decompressed
+    once, and then reduced to one waveform per unit strictly one unit at a time
+    before the band is freed. Peak memory is bounded to a single decompressed band.
     """
     import zarr
 
@@ -219,9 +222,15 @@ def _extremum_waveforms(
                     store[rel_key] = body
         root = zarr.open_consolidated(store, mode="r")
         block = np.asarray(root[f"{_UNITS_GROUP}/waveform_mean"][start:stop, :, :])
-        rows = np.arange(stop - start)
-        out[start:stop] = block[rows, :, extremum_idx[start:stop]].astype("float32")
-        del block, root, store
+        # block is a self-contained decompressed array; drop the compressed band
+        # bytes and zarr handle now so only one band's data is resident at a time.
+        del root, store, band_keys
+        gc.collect()
+        for local_idx in range(stop - start):
+            unit = start + local_idx
+            out[unit] = block[local_idx, :, extremum_idx[unit]].astype("float32")
+        del block
+        gc.collect()
     return out
 
 
@@ -315,7 +324,10 @@ def _fetch_asset_ecephys_units(asset_name: str, location: str | None = None) -> 
             )
             if waveforms is not None:
                 session_df["waveform"] = [row for row in waveforms]
+                del waveforms
         frames.append(session_df)
+        del session_df, metadata, zmetadata
+        gc.collect()
 
     if not frames:
         _log(f"No units extracted for asset {asset_name}")
