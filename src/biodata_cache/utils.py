@@ -36,9 +36,22 @@ def setup_logging():
 
 
 def get_cache_registry():
-    """Fetch and return the cache registry from the active backend."""
+    """Fetch and return the cache registry from the active backend.
+
+    The registry is stored as one fragment per cache table under
+    ``cache_registry/<name>.json`` (each sync job writes its own fragment). This
+    merges every fragment into a single CacheRegistry, sorted by table name for a
+    stable ordering. Falls back to a legacy monolithic ``cache_registry.json`` if
+    no fragments are present (older cache versions written before the split).
+    """
     import biodata_cache.registry as registry
-    from biodata_cache.models import CacheRegistry
+    from biodata_cache.models import CacheRegistry, CacheTable
+
+    fragments = registry.BACKEND.list_registry_fragments()
+    if fragments:
+        tables = [CacheTable.model_validate_json(fragment) for fragment in fragments]
+        tables.sort(key=lambda table: table.name)
+        return CacheRegistry(tables=tables)
 
     data = registry.BACKEND.get_json("cache_registry.json")
     return CacheRegistry.model_validate_json(data)

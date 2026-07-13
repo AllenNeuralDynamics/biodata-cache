@@ -77,6 +77,31 @@ class Backend(ABC):
         """Return the list of all available version folders from cache_versions.json."""
         pass  # pragma: no cover
 
+    @abstractmethod
+    def register_version(self) -> None:
+        """Add the active version folder to the top-level cache_versions.json index."""
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def put_registry_fragment(self, name: str, data: str) -> None:
+        """Write a single cache-table registry fragment (cache_registry/<name>.json).
+
+        Each sync job writes only its own fragment(s), so parallel jobs never
+        contend on a single cache_registry.json object. A re-run overwrites the
+        fragment in place.
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def list_registry_fragments(self) -> list[str]:
+        """Return the JSON strings of every registry fragment for the active version."""
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def clear_registry(self) -> None:
+        """Remove all registry fragments for the active version (fresh-run reset)."""
+        pass  # pragma: no cover
+
     def partition_exists(self, table_name: str) -> bool:
         """Return True if data already exists for the given partition."""
         return False
@@ -291,6 +316,10 @@ class S3Backend(Backend):
                 backend="S3Backend", table=key, message=f"Published metadata to s3://{self.bucket}/{s3_key}"
             ).to_json()
         )
+        self.register_version()
+
+    def register_version(self) -> None:  # pragma: no cover
+        """Add the active version folder to the top-level cache_versions.json index."""
         index_key = f"{_CACHE_ROOT}/cache_versions.json"
         try:
             response = self.s3_client.get_object(Bucket=self.bucket, Key=index_key)
@@ -305,6 +334,47 @@ class S3Backend(Backend):
             Body=json.dumps(existing).encode(),
             ContentType="application/json",
         )
+
+    def _registry_prefix(self) -> str:
+        """Return the S3 prefix that holds the per-table registry fragments."""
+        return f"{_CACHE_ROOT}/{_VERSION_FOLDER}/cache_registry/"
+
+    def put_registry_fragment(self, name: str, data: str) -> None:  # pragma: no cover
+        """Write a single cache-table registry fragment to S3."""
+        s3_key = f"{self._registry_prefix()}{name}.json"
+        self.s3_client.put_object(
+            Bucket=self.bucket,
+            Key=s3_key,
+            Body=data.encode(),
+            ContentType="application/json",
+        )
+        logging.info(
+            CacheLogMessage(
+                backend="S3Backend", table=name, message=f"Published registry fragment to s3://{self.bucket}/{s3_key}"
+            ).to_json()
+        )
+
+    def list_registry_fragments(self) -> list[str]:  # pragma: no cover
+        """Return the JSON strings of every registry fragment for the active version."""
+        paginator = self.s3_client.get_paginator("list_objects_v2")
+        fragments = []
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=self._registry_prefix()):
+            for obj in page.get("Contents", []):
+                if not obj["Key"].endswith(".json"):
+                    continue
+                response = self.s3_client.get_object(Bucket=self.bucket, Key=obj["Key"])
+                fragments.append(response["Body"].read().decode())
+        return fragments
+
+    def clear_registry(self) -> None:  # pragma: no cover
+        """Delete every registry fragment for the active version."""
+        paginator = self.s3_client.get_paginator("list_objects_v2")
+        to_delete = []
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=self._registry_prefix()):
+            for obj in page.get("Contents", []):
+                to_delete.append({"Key": obj["Key"]})
+        for i in range(0, len(to_delete), 1000):
+            self.s3_client.delete_objects(Bucket=self.bucket, Delete={"Objects": to_delete[i : i + 1000]})
 
     def get_json(self, key: str) -> str:  # pragma: no cover
         """Read a JSON string from the versioned folder in S3."""
@@ -415,10 +485,33 @@ class MemoryBackend(Backend):
             ).to_json()
         )
         self._json_store[f"{_VERSION_FOLDER}/{key}"] = data
+        self.register_version()
+
+    def register_version(self) -> None:
+        """Add the active version folder to the in-memory cache_versions.json index."""
         existing = json.loads(self._json_store.get("cache_versions.json", "[]"))
         if _VERSION_FOLDER not in existing:
             existing.append(_VERSION_FOLDER)
         self._json_store["cache_versions.json"] = json.dumps(existing)
+
+    def _registry_prefix(self) -> str:
+        """Return the in-memory key prefix that holds the per-table registry fragments."""
+        return f"{_VERSION_FOLDER}/cache_registry/"
+
+    def put_registry_fragment(self, name: str, data: str) -> None:
+        """Store a single cache-table registry fragment in memory."""
+        self._json_store[f"{self._registry_prefix()}{name}.json"] = data
+
+    def list_registry_fragments(self) -> list[str]:
+        """Return the JSON strings of every registry fragment for the active version."""
+        prefix = self._registry_prefix()
+        return [value for key, value in self._json_store.items() if key.startswith(prefix)]
+
+    def clear_registry(self) -> None:
+        """Remove all in-memory registry fragments for the active version."""
+        prefix = self._registry_prefix()
+        for key in [k for k in self._json_store if k.startswith(prefix)]:
+            del self._json_store[key]
 
     def get_json(self, key: str) -> str:
         """Read a JSON string from the versioned in-memory JSON store."""

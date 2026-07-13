@@ -92,7 +92,20 @@ retrieved_df = custom("my_data")
 
 ### Update all cache tables
 
-We run a nightly capsule on Code Ocean with this code to update all cache tables (not the custom ones).
+The cache is rebuilt on Code Ocean by a set of per-table sync jobs wired into a
+Nextflow pipeline (`asset_basics` first, then the rest in parallel). Each job is
+selected by the `BIODATA_CACHE_SYNC_JOB` environment variable and writes its own
+registry fragment as it completes. See [PIPELINE.md](PIPELINE.md) for the job
+list, pipeline layout, and the version-bump/re-run procedure.
+
+To run a single job (as a capsule does):
+
+```python
+from biodata_cache.sync import run_sync_job
+run_sync_job()  # reads BIODATA_CACHE_SYNC_JOB, or pass e.g. run_sync_job("qc")
+```
+
+To rebuild everything in one local process (not used by the pipeline):
 
 ```python
 from biodata_cache.sync import update_all_tables

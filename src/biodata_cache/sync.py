@@ -1,7 +1,23 @@
-"""Synchronization utilities for updating all cached data."""
+"""Synchronization utilities for updating cached data.
 
-import gc
-from concurrent.futures import ThreadPoolExecutor, as_completed
+Each cache table (or logical group of tables) is built by an independent *sync
+job*. Jobs are dispatched by name so that a single Code Ocean capsule image can
+be cloned once per job and selected at run time through the
+``BIODATA_CACHE_SYNC_JOB`` environment variable. This lets the jobs run as
+separate capsules in a Nextflow pipeline: ``asset_basics`` first (it is a
+prerequisite for every other job), then all remaining jobs in parallel.
+
+Every job writes its own per-table registry fragment (``cache_registry/<name>.json``)
+as soon as it finishes, rather than one process writing the whole registry at the
+end. Parallel jobs therefore never contend on a single JSON object. The
+``asset_basics`` job additionally resets the fragment directory and registers the
+version folder in ``cache_versions.json`` before any other job runs.
+
+See ``PIPELINE.md`` for the capsule/pipeline layout and the version-bump procedure.
+"""
+
+import os
+from collections.abc import Callable
 
 from .cache_table_helpers.asset_basics import asset_basics_columns
 from .cache_table_helpers.behavior_curriculum import behavior_curriculum_columns
@@ -25,32 +41,24 @@ from .cache_table_helpers.time_to_qc import time_to_qc_columns
 from .cache_table_helpers.unique_genotypes import unique_genotypes_columns
 from .cache_table_helpers.unique_project_names import unique_project_names_columns
 from .cache_table_helpers.unique_subject_ids import unique_subject_ids_columns
-from .models import CacheRegistry, CacheTable, CacheTableType
+from .models import CacheTable, CacheTableType
 from .registry import BACKEND, NAMES, TABLE_REGISTRY
 
-_MAX_WORKERS = 4
+# Environment variable read by a capsule to decide which job it runs.
+SYNC_JOB_ENV = "BIODATA_CACHE_SYNC_JOB"
 
 
-def _run_and_discard(fn, **kwargs) -> None:
-    """Invoke a table update function and drop its return value.
-
-    The cache helpers return the full DataFrame they just wrote. During a bulk
-    update only the side effect (the cache write) matters, so the return value
-    is discarded immediately. This prevents the parallel Future objects from
-    pinning every subject's DataFrame in memory at once.
-    """
-    fn(**kwargs)
+# --- Registry fragment builders ----------------------------------------------
+#
+# One builder per cache table, keyed by the table's registry name (== CacheTable.name
+# == the fragment filename). A job publishes only the fragments for the tables it
+# builds, so the set of jobs collectively covers every entry below.
 
 
-
-def publish_cache_registry() -> None:
-    """Build and publish the cache registry JSON to the cache root.
-
-    Collects column and location information for all registered cache tables,
-    constructs a CacheRegistry model, and writes it as JSON via the active Backend.
-    """
-    table_list = [
-        CacheTable(
+def _entry_builders() -> dict[str, Callable[[], CacheTable]]:
+    """Return the per-table registry-entry factories, keyed by table name."""
+    return {
+        NAMES["upn"]: lambda: CacheTable(
             name=NAMES["upn"],
             description="Unique project names across all assets",
             location=BACKEND.get_location(NAMES["upn"]),
@@ -58,7 +66,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.metadata,
             columns=unique_project_names_columns(),
         ),
-        CacheTable(
+        NAMES["usi"]: lambda: CacheTable(
             name=NAMES["usi"],
             description="Unique subject_ids across all assets",
             location=BACKEND.get_location(NAMES["usi"]),
@@ -66,7 +74,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.metadata,
             columns=unique_subject_ids_columns(),
         ),
-        CacheTable(
+        NAMES["ugt"]: lambda: CacheTable(
             name=NAMES["ugt"],
             description="Unique genotypes across all assets where subject.subject_details.genotype is present",
             location=BACKEND.get_location(NAMES["ugt"]),
@@ -74,7 +82,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.metadata,
             columns=unique_genotypes_columns(),
         ),
-        CacheTable(
+        NAMES["basics"]: lambda: CacheTable(
             name=NAMES["basics"],
             description="Commonly used asset metadata, one row per data asset",
             location=BACKEND.get_location(NAMES["basics"]),
@@ -82,7 +90,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.metadata,
             columns=asset_basics_columns(),
         ),
-        CacheTable(
+        NAMES["d2r"]: lambda: CacheTable(
             name=NAMES["d2r"],
             description="Mapping from derived asset names to their source raw asset names",
             location=BACKEND.get_location(NAMES["d2r"]),
@@ -90,7 +98,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.metadata,
             columns=source_data_columns(),
         ),
-        CacheTable(
+        NAMES["qc"]: lambda: CacheTable(
             name=NAMES["qc"],
             description="Quality control table with one row per QC metric, partitioned by subject_id",
             location=BACKEND.get_location("qc", partitioned=True),
@@ -99,7 +107,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.asset,
             columns=qc_columns(),
         ),
-        CacheTable(
+        NAMES["smartspim"]: lambda: CacheTable(
             name=NAMES["smartspim"],
             description="SmartSPIM assets including processing status and neuroglancer links",
             location=BACKEND.get_location(NAMES["smartspim"]),
@@ -107,7 +115,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.metadata,
             columns=assets_smartspim_columns(),
         ),
-        CacheTable(
+        NAMES["exaspim"]: lambda: CacheTable(
             name=NAMES["exaspim"],
             description="ExaSPIM assets including processing status and neuroglancer links",
             location=BACKEND.get_location(NAMES["exaspim"]),
@@ -115,7 +123,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.metadata,
             columns=platform_exaspim_columns(),
         ),
-        CacheTable(
+        NAMES["upgrade"]: lambda: CacheTable(
             name=NAMES["upgrade"],
             description="Metadata upgrade status for each asset across versions",
             location=BACKEND.get_location(NAMES["upgrade"]),
@@ -123,7 +131,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.metadata,
             columns=metadata_upgrade_columns(),
         ),
-        CacheTable(
+        NAMES["fib"]: lambda: CacheTable(
             name=NAMES["fib"],
             description="Fiber photometry assets with per-fiber targeted structure and intended channel measurement",
             location=BACKEND.get_location(NAMES["fib"]),
@@ -131,7 +139,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.metadata,
             columns=platform_fib_columns(),
         ),
-        CacheTable(
+        NAMES["fib_traces"]: lambda: CacheTable(
             name=NAMES["fib_traces"],
             description="Processed fiber photometry dF/F traces (one row per sample), partitioned by asset_name",
             location=BACKEND.get_location("platform_fib_traces", partitioned=True),
@@ -140,7 +148,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.platform,
             columns=platform_fib_traces_columns(),
         ),
-        CacheTable(
+        NAMES["ecephys_spikes"]: lambda: CacheTable(
             name=NAMES["ecephys_spikes"],
             description="Sorted ecephys spike times (one row per spike), partitioned by asset_name",
             location=BACKEND.get_location("platform_ecephys_spikes", partitioned=True),
@@ -149,7 +157,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.platform,
             columns=platform_ecephys_spikes_columns(),
         ),
-        CacheTable(
+        NAMES["ecephys_units"]: lambda: CacheTable(
             name=NAMES["ecephys_units"],
             description="Sorted ecephys units with quality/waveform metrics (one row per unit), partitioned by asset_name",
             location=BACKEND.get_location("platform_ecephys_units", partitioned=True),
@@ -158,7 +166,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.platform,
             columns=platform_ecephys_units_columns(),
         ),
-        CacheTable(
+        NAMES["df_sessions"]: lambda: CacheTable(
             name=NAMES["df_sessions"],
             description="Dynamic foraging session table (one row per session); mirrors upstream aind-dynamic-foraging-database",
             location=BACKEND.get_location(NAMES["df_sessions"]),
@@ -166,7 +174,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.platform,
             columns=platform_dynamic_foraging_sessions_columns(),
         ),
-        CacheTable(
+        NAMES["df_trials"]: lambda: CacheTable(
             name=NAMES["df_trials"],
             description="Dynamic foraging trial table (one row per trial), partitioned by subject_id; mirrors upstream aind-dynamic-foraging-database",
             location=BACKEND.get_location(NAMES["df_trials"], partitioned=True),
@@ -175,7 +183,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.platform,
             columns=platform_dynamic_foraging_trials_columns(),
         ),
-        CacheTable(
+        NAMES["df_events"]: lambda: CacheTable(
             name=NAMES["df_events"],
             description="Dynamic foraging event table (one row per behavioral event), partitioned by subject_id; mirrors upstream aind-dynamic-foraging-database",
             location=BACKEND.get_location(NAMES["df_events"], partitioned=True),
@@ -184,7 +192,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.platform,
             columns=platform_dynamic_foraging_events_columns(),
         ),
-        CacheTable(
+        NAMES["curriculum"]: lambda: CacheTable(
             name=NAMES["curriculum"],
             description="Behavior assets with curriculum name and stage from trainer_state.json",
             location=BACKEND.get_location(NAMES["curriculum"]),
@@ -192,7 +200,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.asset,
             columns=behavior_curriculum_columns(),
         ),
-        CacheTable(
+        NAMES["platform_qc"]: lambda: CacheTable(
             name=NAMES["platform_qc"],
             description="Tag-level QC statuses per platform, one row per asset/tag combination",
             location=BACKEND.get_location("platform_qc", partitioned=True),
@@ -201,7 +209,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.platform,
             columns=platform_qc_columns(),
         ),
-        CacheTable(
+        NAMES["time_to_qc"]: lambda: CacheTable(
             name=NAMES["time_to_qc"],
             description="Time from processing completion to QC completion for derived assets",
             location=BACKEND.get_location(NAMES["time_to_qc"]),
@@ -209,7 +217,7 @@ def publish_cache_registry() -> None:
             type=CacheTableType.metadata,
             columns=time_to_qc_columns(),
         ),
-        CacheTable(
+        NAMES["mouselight"]: lambda: CacheTable(
             name=NAMES["mouselight"],
             description="Janelia MouseLight neuron list (one row per neuron) with label, soma region and tracing UUIDs",
             location=BACKEND.get_location(NAMES["mouselight"]),
@@ -217,194 +225,218 @@ def publish_cache_registry() -> None:
             type=CacheTableType.platform,
             columns=platform_mouselight_columns(),
         ),
-    ]
-    registry = CacheRegistry(tables=table_list)
-    BACKEND.put_json("cache_registry.json", registry.model_dump_json())
+    }
+
+
+def publish_registry_fragment(name: str) -> None:
+    """Build and publish the registry fragment for a single cache table.
+
+    Overwrites the existing fragment if one is present (idempotent re-run).
+    """
+    entry = _entry_builders()[name]()
+    BACKEND.put_registry_fragment(name, entry.model_dump_json())
+
+
+def publish_cache_registry() -> None:
+    """Publish a registry fragment for every registered cache table.
+
+    Convenience for local/full runs; the pipeline instead has each job publish
+    only its own fragment(s) as it completes.
+    """
+    for name in _entry_builders():
+        publish_registry_fragment(name)
+
+
+# --- Shared helpers -----------------------------------------------------------
+
+
+def _load_basics():
+    """Return the cached asset_basics DataFrame (built by the asset_basics job).
+
+    In the pipeline every non-basics job reads asset_basics from the shared cache
+    rather than recomputing it. Calling the helper without ``force_update`` returns
+    the already-cached table.
+    """
+    return TABLE_REGISTRY[NAMES["basics"]]()
+
+
+def _derived_asset_names(df_basics, modality_substr: str) -> list:
+    """Return derived asset names whose modalities contain ``modality_substr``."""
+    if "modalities" not in df_basics.columns or "data_level" not in df_basics.columns:
+        return []
+    mask = df_basics["modalities"].apply(
+        lambda x: x is not None and not isinstance(x, float) and any(modality_substr in m.lower() for m in x)
+    )
+    return df_basics[mask & (df_basics["data_level"] == "derived")]["name"].dropna().unique().tolist()
+
+
+def _location_map(df_basics) -> dict:
+    """Return a mapping of asset name -> S3 location from asset_basics."""
+    if "name" in df_basics.columns and "location" in df_basics.columns:
+        return dict(zip(df_basics["name"], df_basics["location"], strict=False))
+    return {}
+
+
+# --- Sync jobs ----------------------------------------------------------------
+
+
+def _job_asset_basics() -> None:
+    """Build asset_basics. Runs first: resets the registry and registers the version."""
+    BACKEND.clear_registry()
+    BACKEND.register_version()
+    TABLE_REGISTRY[NAMES["basics"]](force_update=True)
+    publish_registry_fragment(NAMES["basics"])
+
+
+def _job_fast() -> None:
+    """Build all fast DocDB-only cache tables in one job."""
+    for key in ("upn", "usi", "ugt", "d2r", "upgrade", "fib", "mouselight"):
+        TABLE_REGISTRY[NAMES[key]](force_update=True)
+        publish_registry_fragment(NAMES[key])
+    for platform in PLATFORMS:
+        TABLE_REGISTRY[NAMES["platform_qc"]](platform=platform, force_update=True)
+    publish_registry_fragment(NAMES["platform_qc"])
+
+
+def _job_qc() -> None:
+    """Build the per-subject quality_control table sequentially."""
+    df_basics = _load_basics()
+    subject_ids = df_basics["subject_id"].dropna().unique() if "subject_id" in df_basics.columns else []
+    qc_fn = TABLE_REGISTRY[NAMES["qc"]]
+    for subject_id in subject_ids:
+        qc_fn(subject_id=subject_id, force_update=True)
+    publish_registry_fragment(NAMES["qc"])
+
+
+def _job_smartspim() -> None:
+    """Build the SmartSPIM platform table."""
+    TABLE_REGISTRY[NAMES["smartspim"]](force_update=True)
+    publish_registry_fragment(NAMES["smartspim"])
+
+
+def _job_exaspim() -> None:
+    """Build the ExaSPIM platform table."""
+    TABLE_REGISTRY[NAMES["exaspim"]](force_update=True)
+    publish_registry_fragment(NAMES["exaspim"])
+
+
+def _job_df() -> None:
+    """Build the dynamic foraging tables (sessions, then per-subject trials/events)."""
+    df_sessions = TABLE_REGISTRY[NAMES["df_sessions"]](force_update=True)
+    publish_registry_fragment(NAMES["df_sessions"])
+    subject_ids = df_sessions["subject_id"].dropna().unique() if "subject_id" in df_sessions.columns else []
+    trials_fn = TABLE_REGISTRY[NAMES["df_trials"]]
+    events_fn = TABLE_REGISTRY[NAMES["df_events"]]
+    for subject_id in subject_ids:
+        trials_fn(subject_id=subject_id, force_update=True)
+        events_fn(subject_id=subject_id, force_update=True)
+    publish_registry_fragment(NAMES["df_trials"])
+    publish_registry_fragment(NAMES["df_events"])
+
+
+def _job_fib_traces() -> None:
+    """Build fiber photometry traces for each derived fib asset sequentially."""
+    df_basics = _load_basics()
+    location_map = _location_map(df_basics)
+    fib_traces_fn = TABLE_REGISTRY[NAMES["fib_traces"]]
+    for asset_name in _derived_asset_names(df_basics, "fib"):
+        if BACKEND.partition_exists(f"{NAMES['fib_traces']}/{asset_name}"):
+            continue
+        fib_traces_fn(asset_name=asset_name, location=location_map.get(asset_name), force_update=True)
+    publish_registry_fragment(NAMES["fib_traces"])
+
+
+def _job_ecephys_spikes() -> None:
+    """Build sorted ecephys spike times for each derived ecephys asset sequentially."""
+    df_basics = _load_basics()
+    location_map = _location_map(df_basics)
+    spikes_fn = TABLE_REGISTRY[NAMES["ecephys_spikes"]]
+    for asset_name in _derived_asset_names(df_basics, "ecephys"):
+        if BACKEND.partition_exists(f"{NAMES['ecephys_spikes']}/{asset_name}"):
+            continue
+        spikes_fn(asset_name=asset_name, location=location_map.get(asset_name), force_update=True)
+    publish_registry_fragment(NAMES["ecephys_spikes"])
+
+
+def _job_ecephys_units() -> None:
+    """Build sorted ecephys units for each derived ecephys asset sequentially."""
+    df_basics = _load_basics()
+    location_map = _location_map(df_basics)
+    units_fn = TABLE_REGISTRY[NAMES["ecephys_units"]]
+    for asset_name in _derived_asset_names(df_basics, "ecephys"):
+        if BACKEND.partition_exists(f"{NAMES['ecephys_units']}/{asset_name}"):
+            continue
+        units_fn(asset_name=asset_name, location=location_map.get(asset_name), force_update=True)
+    publish_registry_fragment(NAMES["ecephys_units"])
+
+
+def _job_curriculum() -> None:
+    """Build the behavior curriculum table."""
+    TABLE_REGISTRY[NAMES["curriculum"]](force_update=True)
+    publish_registry_fragment(NAMES["curriculum"])
+
+
+def _job_time_to_qc() -> None:
+    """Build the time-to-QC table."""
+    TABLE_REGISTRY[NAMES["time_to_qc"]](force_update=True)
+    publish_registry_fragment(NAMES["time_to_qc"])
+
+
+# Registry of sync jobs. asset_basics must run before any other job (it resets the
+# registry, registers the version, and produces the table every other job reads).
+JOBS: dict[str, Callable[[], None]] = {
+    "asset_basics": _job_asset_basics,
+    "fast": _job_fast,
+    "qc": _job_qc,
+    "smartspim": _job_smartspim,
+    "exaspim": _job_exaspim,
+    "df": _job_df,
+    "fib_traces": _job_fib_traces,
+    "ecephys_spikes": _job_ecephys_spikes,
+    "ecephys_units": _job_ecephys_units,
+    "curriculum": _job_curriculum,
+    "time_to_qc": _job_time_to_qc,
+}
+
+# Jobs that may run in parallel once asset_basics has completed.
+PARALLEL_JOBS = tuple(name for name in JOBS if name != "asset_basics")
+
+
+def run_sync_job(job: str | None = None) -> None:
+    """Run a single named sync job.
+
+    Args:
+        job: The job name. If None, read from the ``BIODATA_CACHE_SYNC_JOB``
+            environment variable. This is how a Code Ocean capsule selects which
+            table it builds.
+    """
+    job = job or os.getenv(SYNC_JOB_ENV)
+    if not job:
+        raise ValueError(
+            f"No sync job specified. Pass job= or set the {SYNC_JOB_ENV} environment variable. "
+            f"Valid jobs: {sorted(JOBS)}"
+        )
+    if job not in JOBS:
+        raise ValueError(f"Unknown sync job '{job}'. Valid jobs: {sorted(JOBS)}")
+    JOBS[job]()
 
 
 def update_all_tables(fast: bool = True, slow: bool = True) -> None:
-    """Trigger force update of registered cache table functions.
+    """Run every sync job in one process (local / non-pipeline convenience).
 
-    asset_basics always runs first as it is a prerequisite for both sets.
-    Fast cache tables (DocDB-only queries) and slow cache tables (per-subject or S3 data)
-    can be run independently via the fast/slow flags.
-    After all selected updates, publishes cache registry JSON to the cache root.
+    asset_basics always runs first. Fast cache tables (DocDB-only queries) and slow
+    cache tables (per-subject or S3 data) can be toggled independently via the
+    fast/slow flags. Each job publishes its own registry fragment as it completes.
 
     Args:
-        fast: If True, run fast DocDB-only cache tables (upn, usi, ugt, d2r, upgrade, fib, mouselight, platform_qc).
-        slow: If True, run slow per-subject/S3 cache tables (qc, smartspim, exaspim, df_sessions/df_trials/df_events, fib_traces, ecephys_spikes, ecephys_units, curriculum, time_to_qc).
+        fast: If True, run the grouped fast DocDB-only cache tables.
+        slow: If True, run the slow per-subject/S3 cache tables.
     """
-    df_basics = TABLE_REGISTRY[NAMES["basics"]](force_update=True)
+    run_sync_job("asset_basics")
 
     if fast:
-        TABLE_REGISTRY[NAMES["upn"]](force_update=True)
-        TABLE_REGISTRY[NAMES["usi"]](force_update=True)
-        TABLE_REGISTRY[NAMES["ugt"]](force_update=True)
-        TABLE_REGISTRY[NAMES["d2r"]](force_update=True)
-        TABLE_REGISTRY[NAMES["upgrade"]](force_update=True)
-        TABLE_REGISTRY[NAMES["fib"]](force_update=True)
-        TABLE_REGISTRY[NAMES["mouselight"]](force_update=True)
-        for platform in PLATFORMS:
-            TABLE_REGISTRY[NAMES["platform_qc"]](platform=platform, force_update=True)
+        run_sync_job("fast")
 
     if slow:
-        subject_ids = df_basics["subject_id"].dropna().unique()
-
-        if len(subject_ids) > 0:
-            qc_table_fn = TABLE_REGISTRY[NAMES["qc"]]
-            try:
-                with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
-                    futures = [
-                        executor.submit(_run_and_discard, qc_table_fn, subject_id=subject_id, force_update=True)
-                        for subject_id in subject_ids
-                    ]
-                    for future in as_completed(futures):
-                        future.result()
-            except Exception:
-                for subject_id in subject_ids:
-                    qc_table_fn(subject_id=subject_id, force_update=True)
-            gc.collect()
-
-        TABLE_REGISTRY[NAMES["smartspim"]](force_update=True)
-        TABLE_REGISTRY[NAMES["exaspim"]](force_update=True)
-        df_sessions = TABLE_REGISTRY[NAMES["df_sessions"]](force_update=True)
-        df_subject_ids = df_sessions["subject_id"].dropna().unique() if "subject_id" in df_sessions.columns else []
-        del df_sessions
-        if len(df_subject_ids) > 0:
-            trials_fn = TABLE_REGISTRY[NAMES["df_trials"]]
-            events_fn = TABLE_REGISTRY[NAMES["df_events"]]
-            try:
-                with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
-                    futures = [
-                        executor.submit(_run_and_discard, trials_fn, subject_id=subject_id, force_update=True)
-                        for subject_id in df_subject_ids
-                    ]
-                    futures += [
-                        executor.submit(_run_and_discard, events_fn, subject_id=subject_id, force_update=True)
-                        for subject_id in df_subject_ids
-                    ]
-                    for future in as_completed(futures):
-                        future.result()
-            except Exception:
-                for subject_id in df_subject_ids:
-                    trials_fn(subject_id=subject_id, force_update=True)
-                    events_fn(subject_id=subject_id, force_update=True)
-            gc.collect()
-
-        fib_asset_names = []
-        if "modalities" in df_basics.columns and "data_level" in df_basics.columns:
-            fib_mask = df_basics["modalities"].apply(
-                lambda x: x is not None and not isinstance(x, float) and any("fib" in m.lower() for m in x)
-            )
-            fib_asset_names = (
-                df_basics[fib_mask & (df_basics["data_level"] == "derived")]["name"].dropna().unique()
-            )
-        fib_asset_names = [
-            asset_name
-            for asset_name in fib_asset_names
-            if not BACKEND.partition_exists(f"{NAMES['fib_traces']}/{asset_name}")
-        ]
-        if len(fib_asset_names) > 0:
-            fib_location_map = {}
-            if "name" in df_basics.columns and "location" in df_basics.columns:
-                fib_location_map = dict(zip(df_basics["name"], df_basics["location"], strict=False))
-            fib_traces_fn = TABLE_REGISTRY[NAMES["fib_traces"]]
-            try:
-                with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
-                    futures = [
-                        executor.submit(
-                            _run_and_discard,
-                            fib_traces_fn,
-                            asset_name=asset_name,
-                            location=fib_location_map.get(asset_name),
-                            force_update=True,
-                        )
-                        for asset_name in fib_asset_names
-                    ]
-                    for future in as_completed(futures):
-                        future.result()
-            except Exception:
-                for asset_name in fib_asset_names:
-                    fib_traces_fn(
-                        asset_name=asset_name,
-                        location=fib_location_map.get(asset_name),
-                        force_update=True,
-                    )
-            gc.collect()
-
-        ecephys_asset_names = []
-        if "modalities" in df_basics.columns and "data_level" in df_basics.columns:
-            ecephys_mask = df_basics["modalities"].apply(
-                lambda x: x is not None and not isinstance(x, float) and any("ecephys" in m.lower() for m in x)
-            )
-            ecephys_asset_names = (
-                df_basics[ecephys_mask & (df_basics["data_level"] == "derived")]["name"].dropna().unique().tolist()
-            )
-        ecephys_location_map = {}
-        if "name" in df_basics.columns and "location" in df_basics.columns:
-            ecephys_location_map = dict(zip(df_basics["name"], df_basics["location"], strict=False))
-
-        spikes_asset_names = [
-            asset_name
-            for asset_name in ecephys_asset_names
-            if not BACKEND.partition_exists(f"{NAMES['ecephys_spikes']}/{asset_name}")
-        ]
-        if len(spikes_asset_names) > 0:
-            ecephys_spikes_fn = TABLE_REGISTRY[NAMES["ecephys_spikes"]]
-            try:
-                with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
-                    futures = [
-                        executor.submit(
-                            _run_and_discard,
-                            ecephys_spikes_fn,
-                            asset_name=asset_name,
-                            location=ecephys_location_map.get(asset_name),
-                            force_update=True,
-                        )
-                        for asset_name in spikes_asset_names
-                    ]
-                    for future in as_completed(futures):
-                        future.result()
-            except Exception:
-                for asset_name in spikes_asset_names:
-                    ecephys_spikes_fn(
-                        asset_name=asset_name,
-                        location=ecephys_location_map.get(asset_name),
-                        force_update=True,
-                    )
-            gc.collect()
-
-        units_asset_names = [
-            asset_name
-            for asset_name in ecephys_asset_names
-            if not BACKEND.partition_exists(f"{NAMES['ecephys_units']}/{asset_name}")
-        ]
-        if len(units_asset_names) > 0:
-            ecephys_units_fn = TABLE_REGISTRY[NAMES["ecephys_units"]]
-            try:
-                with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
-                    futures = [
-                        executor.submit(
-                            _run_and_discard,
-                            ecephys_units_fn,
-                            asset_name=asset_name,
-                            location=ecephys_location_map.get(asset_name),
-                            force_update=True,
-                        )
-                        for asset_name in units_asset_names
-                    ]
-                    for future in as_completed(futures):
-                        future.result()
-            except Exception:
-                for asset_name in units_asset_names:
-                    ecephys_units_fn(
-                        asset_name=asset_name,
-                        location=ecephys_location_map.get(asset_name),
-                        force_update=True,
-                    )
-            gc.collect()
-
-        TABLE_REGISTRY[NAMES["curriculum"]](force_update=True)
-        TABLE_REGISTRY[NAMES["time_to_qc"]](force_update=True)
-
-    publish_cache_registry()
+        for job in ("qc", "smartspim", "exaspim", "df", "fib_traces", "ecephys_spikes", "ecephys_units", "curriculum", "time_to_qc"):
+            run_sync_job(job)
