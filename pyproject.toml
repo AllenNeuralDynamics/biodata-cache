@@ -26,7 +26,7 @@ dependencies = [
 
 [project.optional-dependencies]
 sync = [
-    'aind-data-access-api[docdb]',
+    'aind-data-access-api[docdb,rds]',
     'aind-dynamic-foraging-database',
     'zarr<3',
 ]
