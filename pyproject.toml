@@ -44,6 +44,9 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+biodata_cache = ["global-bundle.pem"]
+
 [tool.setuptools.dynamic]
 version = {attr = "biodata_cache.__version__"}
 

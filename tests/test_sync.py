@@ -44,6 +44,7 @@ def _make_registry(basics_df=None, sessions_df=None):
         "behavior_curriculum": MagicMock(),
         "platform_qc": MagicMock(),
         "time_to_qc": MagicMock(),
+        "storage_lens": MagicMock(),
     }
     return mocks
 
@@ -124,7 +125,8 @@ def test_fast_job_builds_all_fast_tables(mock_registry, mock_backend):
     run_sync_job("fast")
 
     for name in ("unique_project_names", "unique_subject_ids", "unique_genotypes",
-                 "source_data", "metadata_upgrade", "platform_fib", "platform_mouselight"):
+                 "source_data", "metadata_upgrade", "platform_fib", "platform_mouselight",
+                 "storage_lens"):
         reg[name].assert_called_once_with(force_update=True)
     reg["platform_qc"].assert_has_calls(
         [call(platform="p1", force_update=True), call(platform="p2", force_update=True)]
@@ -133,6 +135,7 @@ def test_fast_job_builds_all_fast_tables(mock_registry, mock_backend):
     assert published == {
         "unique_project_names", "unique_subject_ids", "unique_genotypes", "source_data",
         "metadata_upgrade", "platform_fib", "platform_mouselight", "platform_qc",
+        "storage_lens",
     }
     # fast job never touches asset_basics
     reg["asset_basics"].assert_not_called()
@@ -315,7 +318,7 @@ def test_update_all_tables_propagates_exceptions(mock_registry, mock_backend):
 def test_publish_cache_registry_writes_twenty_fragments(mock_backend):
     mock_backend.get_location.return_value = "s3://bucket/path"
     publish_cache_registry()
-    assert mock_backend.put_registry_fragment.call_count == 20
+    assert mock_backend.put_registry_fragment.call_count == 21
 
 
 @patch("biodata_cache.sync.BACKEND")

@@ -141,3 +141,4 @@ dmypy.json
 uv.lock
 *.lock
 uv.lock
+global-bundle.pem

@@ -37,6 +37,7 @@ from .cache_table_helpers.platform_qc import PLATFORMS, platform_qc_columns
 from .cache_table_helpers.platform_smartspim import assets_smartspim_columns
 from .cache_table_helpers.qc import qc_columns
 from .cache_table_helpers.source_data import source_data_columns
+from .cache_table_helpers.storage_lens import storage_lens_columns
 from .cache_table_helpers.time_to_qc import time_to_qc_columns
 from .cache_table_helpers.unique_genotypes import unique_genotypes_columns
 from .cache_table_helpers.unique_project_names import unique_project_names_columns
@@ -225,6 +226,14 @@ def _entry_builders() -> dict[str, Callable[[], CacheTable]]:
             type=CacheTableType.platform,
             columns=platform_mouselight_columns(),
         ),
+        NAMES["storage_lens"]: lambda: CacheTable(
+            name=NAMES["storage_lens"],
+            description="Weekly S3 Storage Lens report (one row per prefix/storage class), sourced from RDS",
+            location=BACKEND.get_location(NAMES["storage_lens"]),
+            partitioned=False,
+            type=CacheTableType.metadata,
+            columns=storage_lens_columns(),
+        ),
     }
 
 
@@ -289,8 +298,8 @@ def _job_asset_basics() -> None:
 
 
 def _job_fast() -> None:
-    """Build all fast DocDB-only cache tables in one job."""
-    for key in ("upn", "usi", "ugt", "d2r", "upgrade", "fib", "mouselight"):
+    """Build all fast non-partitioned cache tables from DocDB and external databases."""
+    for key in ("upn", "usi", "ugt", "d2r", "upgrade", "fib", "mouselight", "storage_lens"):
         TABLE_REGISTRY[NAMES[key]](force_update=True)
         publish_registry_fragment(NAMES[key])
     for platform in PLATFORMS:
