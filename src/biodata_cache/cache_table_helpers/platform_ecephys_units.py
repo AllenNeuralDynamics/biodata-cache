@@ -302,32 +302,40 @@ def _fetch_asset_ecephys_units(asset_name: str, location: str | None = None) -> 
 
     frames = []
     for nwb_prefix in nwb_prefixes:
-        opened = _open_units_group(client, bucket, nwb_prefix)
-        if opened is None:
-            continue
-        units, scalar_cols, metadata, zmetadata = opened
-        session_df = _extract_units(units, scalar_cols, _experiment_name(nwb_prefix))
-        del units
-        if session_df.empty:
-            continue
-        if (
-            "extremum_channel_index" in session_df.columns
-            and f"{_UNITS_GROUP}/waveform_mean/.zarray" in metadata
-        ):
-            waveforms = _extremum_waveforms(
-                client,
-                bucket,
-                nwb_prefix,
-                zmetadata,
-                metadata,
-                session_df["extremum_channel_index"].to_numpy(),
+        try:
+            opened = _open_units_group(client, bucket, nwb_prefix)
+            if opened is None:
+                continue
+            units, scalar_cols, metadata, zmetadata = opened
+            session_df = _extract_units(units, scalar_cols, _experiment_name(nwb_prefix))
+            del units
+            if session_df.empty:
+                continue
+            if (
+                "extremum_channel_index" in session_df.columns
+                and f"{_UNITS_GROUP}/waveform_mean/.zarray" in metadata
+            ):
+                waveforms = _extremum_waveforms(
+                    client,
+                    bucket,
+                    nwb_prefix,
+                    zmetadata,
+                    metadata,
+                    session_df["extremum_channel_index"].to_numpy(),
+                )
+                if waveforms is not None:
+                    session_df["waveform"] = [row for row in waveforms]
+                    del waveforms
+            frames.append(session_df)
+            del session_df, metadata, zmetadata
+            gc.collect()
+        except Exception as exc:
+            _log(
+                f"Failed to read units from {nwb_prefix} for asset {asset_name}, "
+                f"skipping: {type(exc).__name__}: {exc}"
             )
-            if waveforms is not None:
-                session_df["waveform"] = [row for row in waveforms]
-                del waveforms
-        frames.append(session_df)
-        del session_df, metadata, zmetadata
-        gc.collect()
+            gc.collect()
+            continue
 
     if not frames:
         _log(f"No units extracted for asset {asset_name}")
