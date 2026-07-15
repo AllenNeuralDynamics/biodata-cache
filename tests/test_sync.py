@@ -125,8 +125,7 @@ def test_fast_job_builds_all_fast_tables(mock_registry, mock_backend):
     run_sync_job("fast")
 
     for name in ("unique_project_names", "unique_subject_ids", "unique_genotypes",
-                 "source_data", "metadata_upgrade", "platform_fib", "platform_mouselight",
-                 "storage_lens"):
+                 "source_data", "metadata_upgrade", "platform_fib", "platform_mouselight"):
         reg[name].assert_called_once_with(force_update=True)
     reg["platform_qc"].assert_has_calls(
         [call(platform="p1", force_update=True), call(platform="p2", force_update=True)]
@@ -135,7 +134,6 @@ def test_fast_job_builds_all_fast_tables(mock_registry, mock_backend):
     assert published == {
         "unique_project_names", "unique_subject_ids", "unique_genotypes", "source_data",
         "metadata_upgrade", "platform_fib", "platform_mouselight", "platform_qc",
-        "storage_lens",
     }
     # fast job never touches asset_basics
     reg["asset_basics"].assert_not_called()

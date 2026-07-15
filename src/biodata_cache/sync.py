@@ -299,12 +299,18 @@ def _job_asset_basics() -> None:
 
 def _job_fast() -> None:
     """Build all fast non-partitioned cache tables from DocDB and external databases."""
-    for key in ("upn", "usi", "ugt", "d2r", "upgrade", "fib", "mouselight", "storage_lens"):
+    for key in ("upn", "usi", "ugt", "d2r", "upgrade", "fib", "mouselight"):
         TABLE_REGISTRY[NAMES[key]](force_update=True)
         publish_registry_fragment(NAMES[key])
     for platform in PLATFORMS:
         TABLE_REGISTRY[NAMES["platform_qc"]](platform=platform, force_update=True)
     publish_registry_fragment(NAMES["platform_qc"])
+
+
+def _job_storage_lens() -> None:
+    """Build the storage_lens table (gated by access to an internal server)."""
+    TABLE_REGISTRY[NAMES["storage_lens"]](force_update=True)
+    publish_registry_fragment(NAMES["storage_lens"])
 
 
 def _job_qc() -> None:
@@ -396,6 +402,7 @@ def _job_time_to_qc() -> None:
 JOBS: dict[str, Callable[[], None]] = {
     "asset_basics": _job_asset_basics,
     "fast": _job_fast,
+    "storage_lens": _job_storage_lens,
     "qc": _job_qc,
     "smartspim": _job_smartspim,
     "exaspim": _job_exaspim,
@@ -447,5 +454,5 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
         run_sync_job("fast")
 
     if slow:
-        for job in ("qc", "smartspim", "exaspim", "df", "fib_traces", "ecephys_spikes", "ecephys_units", "curriculum", "time_to_qc"):
+        for job in ("storage_lens", "qc", "smartspim", "exaspim", "df", "fib_traces", "ecephys_spikes", "ecephys_units", "curriculum", "time_to_qc"):
             run_sync_job(job)
