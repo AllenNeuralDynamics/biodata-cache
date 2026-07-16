@@ -32,6 +32,10 @@ _SPIKE_ARRAYS = ["spike_times", "spike_times_index", "unit_name", "device_name"]
 _S3_URI_RE = re.compile(r"^s3://([^/]+)/(.+)$")
 _EXPERIMENT_RE = re.compile(r"(experiment\d+_recording\d+)")
 _MAX_WORKERS = 32
+# Upper bound on the number of spikes materialized into a single DataFrame/parquet
+# chunk. Spike times are read from zarr in per-unit bands sized to stay under this
+# limit so peak memory is bounded regardless of how many spikes an asset contains.
+_MAX_SPIKES_PER_CHUNK = 50_000_000
 
 
 def _log(message: str) -> None:
@@ -132,17 +136,19 @@ def _open_units_group(client, bucket: str, nwb_prefix: str):
     return root[_UNITS_GROUP]
 
 
-def _extract_spikes(units, experiment: str) -> pd.DataFrame:
-    """Build a long-form DataFrame of spikes for one NWB ``/units`` group.
+def _extract_spikes(units, experiment: str):
+    """Yield long-form spike DataFrames for one NWB ``/units`` group in bounded bands.
 
-    One row per spike. The ragged ``spike_times`` array is split per unit using
-    the cumulative ``spike_times_index`` offsets, and each spike is tagged with its
-    unit name, probe (``device_name`` when present), and source recording.
+    One row per spike. The ragged ``spike_times`` array is split per unit using the
+    cumulative ``spike_times_index`` offsets. To keep peak memory bounded regardless
+    of asset size, units are grouped into bands of at most ``_MAX_SPIKES_PER_CHUNK``
+    spikes, and each band reads only its slice of ``spike_times`` from zarr (never the
+    whole array). ``device_name`` and ``unit_name`` are stored as pandas categoricals
+    so per-spike columns hold small integer codes rather than 8-byte object references.
     """
-    spike_times = np.asarray(units["spike_times"][:], dtype="float64")
     index = np.asarray(units["spike_times_index"][:], dtype="int64")
-    if index.size == 0 or spike_times.size == 0:
-        return pd.DataFrame()
+    if index.size == 0:
+        return
 
     unit_name = np.asarray(units["unit_name"][:], dtype=object)
     if "device_name" in units:
@@ -150,19 +156,40 @@ def _extract_spikes(units, experiment: str) -> pd.DataFrame:
     else:
         device_name = np.array(["" for _ in range(len(index))], dtype=object)
 
-    counts = np.diff(np.concatenate([[0], index]))
-    n = int(index[-1])
-    spike_times = spike_times[:n]
+    spike_times_arr = units["spike_times"]
+    starts = np.concatenate([[0], index[:-1]])
+    counts = index - starts
+    n_units = len(index)
 
-    df = pd.DataFrame(
-        {
-            "experiment": experiment,
-            "device_name": np.repeat(device_name, counts),
-            "unit_name": np.repeat(unit_name, counts),
-            "spike_time": spike_times,
-        }
-    )
-    return df
+    band_start = 0
+    while band_start < n_units:
+        band_spikes = 0
+        band_end = band_start
+        while band_end < n_units and (
+            band_end == band_start or band_spikes + counts[band_end] <= _MAX_SPIKES_PER_CHUNK
+        ):
+            band_spikes += int(counts[band_end])
+            band_end += 1
+
+        off_start = int(starts[band_start])
+        off_end = int(index[band_end - 1])
+        if off_end <= off_start:
+            band_start = band_end
+            continue
+
+        spike_times = np.asarray(spike_times_arr[off_start:off_end], dtype="float64")
+        band_counts = counts[band_start:band_end]
+        df = pd.DataFrame(
+            {
+                "experiment": pd.Categorical([experiment] * spike_times.size),
+                "device_name": pd.Categorical(np.repeat(device_name[band_start:band_end], band_counts)),
+                "unit_name": pd.Categorical(np.repeat(unit_name[band_start:band_end], band_counts)),
+                "spike_time": spike_times,
+            }
+        )
+        yield df
+        del spike_times, df
+        band_start = band_end
 
 
 def _fetch_asset_ecephys_spikes(asset_name: str, location: str | None = None) -> pd.DataFrame:
@@ -208,23 +235,25 @@ def _fetch_asset_ecephys_spikes(asset_name: str, location: str | None = None) ->
         _log(f"No NWB files found for asset {asset_name}")
         return pd.DataFrame()
 
-    frames = []
+    chunk_idx = 0
     for nwb_prefix in nwb_prefixes:
         units = _open_units_group(client, bucket, nwb_prefix)
         if units is None:
             continue
-        session_df = _extract_spikes(units, _experiment_name(nwb_prefix))
+        experiment = _experiment_name(nwb_prefix)
+        for band_df in _extract_spikes(units, experiment):
+            band_df = band_df.sort_values(
+                ["device_name", "unit_name", "spike_time"]
+            ).reset_index(drop=True)
+            registry.BACKEND.write_chunk(cache_key, band_df, chunk_idx)
+            chunk_idx += 1
+            del band_df
         del units
-        if not session_df.empty:
-            frames.append(session_df)
 
-    if not frames:
+    if chunk_idx == 0:
         _log(f"No spikes extracted for asset {asset_name}")
         return pd.DataFrame()
 
-    df = pd.concat(frames, ignore_index=True)
-    df = df.sort_values(["experiment", "device_name", "unit_name", "spike_time"]).reset_index(drop=True)
-    registry.BACKEND.write(cache_key, df)
     _log(f"Cached ecephys spikes for asset {asset_name}")
     return pd.DataFrame()
 

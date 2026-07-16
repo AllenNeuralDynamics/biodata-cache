@@ -131,7 +131,7 @@ def test_extract_spikes_builds_long_form():
             "device_name": ["Probe A", "Probe A"],
         }
     )
-    df = _extract_spikes(units, "experiment1_recording1")
+    df = pd.concat(_extract_spikes(units, "experiment1_recording1"), ignore_index=True)
 
     assert list(df.columns) == ["experiment", "device_name", "unit_name", "spike_time"]
     assert len(df) == 5
@@ -148,13 +148,13 @@ def test_extract_spikes_missing_device_name_defaults_empty():
             "unit_name": ["u0"],
         }
     )
-    df = _extract_spikes(units, "exp")
+    df = pd.concat(_extract_spikes(units, "exp"), ignore_index=True)
     assert set(df["device_name"]) == {""}
 
 
 def test_extract_spikes_empty_index_returns_empty():
     units = _FakeUnits({"spike_times": [], "spike_times_index": [], "unit_name": []})
-    assert _extract_spikes(units, "exp").empty
+    assert list(_extract_spikes(units, "exp")) == []
 
 
 @patch("biodata_cache.cache_table_helpers.platform_ecephys_spikes._download_units_store")
@@ -191,14 +191,16 @@ def test_fetch_asset_concatenates_multiple_nwbs(
     mock_registry.BACKEND.partition_exists.return_value = False
     mock_find.return_value = ["k/nwb/experiment1_recording1.nwb", "k/nwb/experiment2_recording1.nwb"]
     mock_open.side_effect = ["UNITS1", None]
-    mock_extract.return_value = pd.DataFrame(
-        {"experiment": ["e"], "device_name": ["Probe A"], "unit_name": ["u0"], "spike_time": [0.1]}
-    )
+    mock_extract.return_value = [
+        pd.DataFrame(
+            {"experiment": ["e"], "device_name": ["Probe A"], "unit_name": ["u0"], "spike_time": [0.1]}
+        )
+    ]
 
     result = _fetch_asset_ecephys_spikes("asset_derived", location="s3://bucket/abc")
 
-    mock_registry.BACKEND.write.assert_called_once()
-    assert mock_registry.BACKEND.write.call_args[0][0] == "platform_ecephys_spikes/asset_derived"
+    mock_registry.BACKEND.write_chunk.assert_called_once()
+    assert mock_registry.BACKEND.write_chunk.call_args[0][0] == "platform_ecephys_spikes/asset_derived"
     assert mock_extract.call_count == 1
     assert result.empty
 
