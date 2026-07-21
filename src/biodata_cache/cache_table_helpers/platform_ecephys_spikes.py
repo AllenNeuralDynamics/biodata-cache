@@ -113,6 +113,14 @@ def _download_units_store(client, bucket: str, nwb_prefix: str, zmetadata: bytes
     store = {".zmetadata": zmetadata}
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
         for rel_key, body in executor.map(_fetch, keys):
+            # Some source assets contain zero-byte chunk objects (corrupt/aborted
+            # writes). zarr treats a present-but-empty chunk as valid compressed
+            # data and hands it to blosc, which raises "error during blosc
+            # decompression: 0". Omitting the key makes zarr fall back to the
+            # array fill value for that chunk instead of crashing the whole asset.
+            if len(body) == 0:
+                _log(f"Skipping zero-byte chunk {rel_key} under {nwb_prefix}")
+                continue
             store[rel_key] = body
     return store
 
