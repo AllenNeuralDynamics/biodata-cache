@@ -107,8 +107,9 @@ def test_asset_basics_job_resets_registers_and_publishes(mock_registry, mock_bac
     mock_backend.clear_registry.assert_called_once()
     mock_backend.register_version.assert_called_once()
     mock_registry["asset_basics"].assert_called_once_with(force_update=True)
-    mock_backend.put_registry_fragment.assert_called_once()
-    assert mock_backend.put_registry_fragment.call_args[0][0] == "asset_basics"
+    mock_registry["source_data"].assert_called_once_with(force_update=True)
+    published = {c[0][0] for c in mock_backend.put_registry_fragment.call_args_list}
+    assert published == {"asset_basics", "source_data"}
 
 
 # --- fast job ----------------------------------------------------------------
@@ -125,18 +126,19 @@ def test_fast_job_builds_all_fast_tables(mock_registry, mock_backend):
     run_sync_job("fast")
 
     for name in ("unique_project_names", "unique_subject_ids", "unique_genotypes",
-                 "source_data", "metadata_upgrade", "platform_fib", "platform_mouselight"):
+                 "metadata_upgrade", "platform_fib", "platform_mouselight"):
         reg[name].assert_called_once_with(force_update=True)
     reg["platform_qc"].assert_has_calls(
         [call(platform="p1", force_update=True), call(platform="p2", force_update=True)]
     )
     published = {c[0][0] for c in mock_backend.put_registry_fragment.call_args_list}
     assert published == {
-        "unique_project_names", "unique_subject_ids", "unique_genotypes", "source_data",
+        "unique_project_names", "unique_subject_ids", "unique_genotypes",
         "metadata_upgrade", "platform_fib", "platform_mouselight", "platform_qc",
     }
-    # fast job never touches asset_basics
+    # fast job never touches asset_basics or source_data (built by the asset_basics job)
     reg["asset_basics"].assert_not_called()
+    reg["source_data"].assert_not_called()
 
 
 # --- qc job ------------------------------------------------------------------

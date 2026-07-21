@@ -4,8 +4,9 @@ Each cache table (or logical group of tables) is built by an independent *sync
 job*. Jobs are dispatched by name so that a single Code Ocean capsule image can
 be cloned once per job and selected at run time through the
 ``BIODATA_CACHE_SYNC_JOB`` environment variable. This lets the jobs run as
-separate capsules in a Nextflow pipeline: ``asset_basics`` first (it is a
-prerequisite for every other job), then all remaining jobs in parallel.
+separate capsules in a Nextflow pipeline: ``asset_basics`` first (it builds
+``asset_basics`` and ``source_data``, the prerequisites for every other job), then
+all remaining jobs in parallel.
 
 Every job writes its own per-table registry fragment (``cache_registry/<name>.json``)
 as soon as it finishes, rather than one process writing the whole registry at the
@@ -290,16 +291,26 @@ def _location_map(df_basics) -> dict:
 
 
 def _job_asset_basics() -> None:
-    """Build asset_basics. Runs first: resets the registry and registers the version."""
+    """Build asset_basics (and source_data). Runs first: resets the registry and registers the version.
+
+    ``source_data`` (the ``d2r`` table) is built here rather than in the parallel
+    ``fast`` job because the ``smartspim`` and ``exaspim`` jobs read it from cache.
+    If it were built in ``fast`` those jobs could race ``fast`` and join against a
+    stale ``d2r`` — dropping any derived asset newer than the previous run (e.g. a
+    freshly stitched SmartSPIM asset would appear as raw-only). Building it in the
+    single upstream prerequisite job guarantees it exists before any parallel job.
+    """
     BACKEND.clear_registry()
     BACKEND.register_version()
     TABLE_REGISTRY[NAMES["basics"]](force_update=True)
     publish_registry_fragment(NAMES["basics"])
+    TABLE_REGISTRY[NAMES["d2r"]](force_update=True)
+    publish_registry_fragment(NAMES["d2r"])
 
 
 def _job_fast() -> None:
     """Build all fast non-partitioned cache tables from DocDB and external databases."""
-    for key in ("upn", "usi", "ugt", "d2r", "upgrade", "fib", "mouselight"):
+    for key in ("upn", "usi", "ugt", "upgrade", "fib", "mouselight"):
         TABLE_REGISTRY[NAMES[key]](force_update=True)
         publish_registry_fragment(NAMES[key])
     for platform in PLATFORMS:

@@ -32,8 +32,8 @@ Run **`asset_basics` first**, then all of the rest in parallel:
 
 | `BIODATA_CACHE_SYNC_JOB` | Builds | Depends on | Notes |
 |---|---|---|---|
-| `asset_basics` | `asset_basics` | — | **Must run first.** Clears the registry fragments, registers the version in `cache_versions.json`, then builds `asset_basics`. |
-| `fast`            | `unique_project_names`, `unique_subject_ids`, `unique_genotypes`, `source_data`, `metadata_upgrade`, `platform_fib`, `platform_mouselight`, `platform_qc` | `asset_basics` | All the cheap DocDB-only tables, grouped into one capsule. |
+| `asset_basics` | `asset_basics`, `source_data` | — | **Must run first.** Clears the registry fragments, registers the version in `cache_versions.json`, then builds `asset_basics` and `source_data`. `source_data` lives here (not in `fast`) because `smartspim`/`exaspim` read it from cache and would otherwise race a parallel `fast` job and join against a stale `source_data`. |
+| `fast`            | `unique_project_names`, `unique_subject_ids`, `unique_genotypes`, `metadata_upgrade`, `platform_fib`, `platform_mouselight`, `platform_qc` | `asset_basics` | All the cheap DocDB-only tables, grouped into one capsule. |
 | `qc`              | `quality_control` | `asset_basics` | Loops over every subject in `asset_basics` sequentially. |
 | `smartspim`       | `platform_smartspim` | `asset_basics` | |
 | `exaspim`         | `platform_exaspim` | `asset_basics` | |
