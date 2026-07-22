@@ -17,6 +17,7 @@ version folder in ``cache_versions.json`` before any other job runs.
 See ``PIPELINE.md`` for the capsule/pipeline layout and the version-bump procedure.
 """
 
+import logging
 import os
 from collections.abc import Callable
 
@@ -386,7 +387,12 @@ def _job_ecephys_spikes() -> None:
     for asset_name in _derived_asset_names(df_basics, "ecephys"):
         if BACKEND.partition_exists(f"{NAMES['ecephys_spikes']}/{asset_name}"):
             continue
-        spikes_fn(asset_name=asset_name, location=location_map.get(asset_name), force_update=True)
+        try:
+            spikes_fn(asset_name=asset_name, location=location_map.get(asset_name), force_update=True)
+        except Exception as exc:
+            # Isolate per-asset failures (e.g. corrupt source NWB) so one bad asset
+            # cannot abort the whole job. Log the asset name for later follow-up.
+            logging.exception(f"ecephys_spikes failed for asset {asset_name}: {exc}")
     publish_registry_fragment(NAMES["ecephys_spikes"])
 
 
@@ -398,7 +404,12 @@ def _job_ecephys_units() -> None:
     for asset_name in _derived_asset_names(df_basics, "ecephys"):
         if BACKEND.partition_exists(f"{NAMES['ecephys_units']}/{asset_name}"):
             continue
-        units_fn(asset_name=asset_name, location=location_map.get(asset_name), force_update=True)
+        try:
+            units_fn(asset_name=asset_name, location=location_map.get(asset_name), force_update=True)
+        except Exception as exc:
+            # Isolate per-asset failures (e.g. corrupt source NWB) so one bad asset
+            # cannot abort the whole job. Log the asset name for later follow-up.
+            logging.exception(f"ecephys_units failed for asset {asset_name}: {exc}")
     publish_registry_fragment(NAMES["ecephys_units"])
 
 

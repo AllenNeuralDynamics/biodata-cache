@@ -120,7 +120,17 @@ def _load_units_metadata(client, bucket: str, nwb_prefix: str) -> tuple[bytes, d
     recordings without a sorting) return None so they can be skipped cheaply.
     """
     body = client.get_object(Bucket=bucket, Key=f"{nwb_prefix}/.zmetadata")["Body"].read()
-    metadata = json.loads(body).get("metadata", {})
+    # An aborted/interrupted zarr write can leave a present-but-empty or truncated
+    # .zmetadata (same corruption class as the zero-byte chunks handled elsewhere).
+    # Skip such files cheaply instead of crashing the whole asset on json.loads.
+    if len(body) == 0:
+        _log(f"Skipping empty .zmetadata under {nwb_prefix}")
+        return None
+    try:
+        metadata = json.loads(body).get("metadata", {})
+    except json.JSONDecodeError:
+        _log(f"Skipping malformed .zmetadata under {nwb_prefix}")
+        return None
     if f"{_UNITS_GROUP}/id/.zarray" not in metadata and f"{_UNITS_GROUP}/unit_name/.zarray" not in metadata:
         return None
     return body, metadata
