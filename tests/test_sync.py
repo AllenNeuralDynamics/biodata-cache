@@ -98,13 +98,15 @@ def test_parallel_jobs_excludes_asset_basics():
 
 @patch("biodata_cache.sync.BACKEND")
 @patch("biodata_cache.sync.TABLE_REGISTRY")
-def test_asset_basics_job_resets_registers_and_publishes(mock_registry, mock_backend):
+def test_asset_basics_job_registers_and_publishes(mock_registry, mock_backend):
     mock_registry.__getitem__.side_effect = _make_registry().__getitem__
     mock_backend.get_location.return_value = "s3://bucket/path"
 
     run_sync_job("asset_basics")
 
-    mock_backend.clear_registry.assert_called_once()
+    # The registry must NOT be cleared: a failed job would otherwise drop its
+    # table from visibility even though its parquet data is intact.
+    mock_backend.clear_registry.assert_not_called()
     mock_backend.register_version.assert_called_once()
     mock_registry["asset_basics"].assert_called_once_with(force_update=True)
     mock_registry["source_data"].assert_called_once_with(force_update=True)

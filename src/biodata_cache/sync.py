@@ -291,7 +291,7 @@ def _location_map(df_basics) -> dict:
 
 
 def _job_asset_basics() -> None:
-    """Build asset_basics (and source_data). Runs first: resets the registry and registers the version.
+    """Build asset_basics (and source_data). Runs first: registers the version.
 
     ``source_data`` (the ``d2r`` table) is built here rather than in the parallel
     ``fast`` job because the ``smartspim`` and ``exaspim`` jobs read it from cache.
@@ -299,8 +299,14 @@ def _job_asset_basics() -> None:
     stale ``d2r`` — dropping any derived asset newer than the previous run (e.g. a
     freshly stitched SmartSPIM asset would appear as raw-only). Building it in the
     single upstream prerequisite job guarantees it exists before any parallel job.
+
+    The registry is deliberately *not* cleared here. Each job overwrites its own
+    fragment in place on success, so a job that fails (or has not yet run) keeps
+    its previous fragment and its table stays visible in the registry. Clearing
+    up front would make every not-yet-rebuilt table vanish mid-run, and a failed
+    nightly job would drop a table entirely even though its parquet data is intact.
+    A full reset is achieved by bumping the cache version (fresh version folder).
     """
-    BACKEND.clear_registry()
     BACKEND.register_version()
     TABLE_REGISTRY[NAMES["basics"]](force_update=True)
     publish_registry_fragment(NAMES["basics"])

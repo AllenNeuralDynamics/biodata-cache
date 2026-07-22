@@ -108,9 +108,13 @@ data-asset-cache/bdc-v{MAJOR.MINOR}/cache_registry/<table_name>.json
 
 - Each job writes only the fragment(s) for the tables it builds, as soon as they
   finish. A re-run overwrites the fragment in place.
-- The `asset_basics` job (which runs first) calls `clear_registry()` to wipe the
-  fragment directory for a clean run, and `register_version()` to add the version
-  folder to the top-level `data-asset-cache/cache_versions.json`.
+- The `asset_basics` job (which runs first) calls `register_version()` to add the
+  version folder to the top-level `data-asset-cache/cache_versions.json`. It does
+  **not** clear the fragment directory: because each job overwrites its own
+  fragment in place, a job that fails (or has not yet run) keeps its previous
+  fragment and its table stays visible in the registry. Wiping up front would
+  make a failed nightly job drop a table entirely even though its parquet data is
+  intact. A full reset is achieved by bumping the cache version.
 - `get_cache_registry()` merges all fragments back into a single `CacheRegistry`
   (sorted by table name). If no fragments exist it falls back to a legacy
   monolithic `cache_registry.json`, so older cache versions still read correctly.
