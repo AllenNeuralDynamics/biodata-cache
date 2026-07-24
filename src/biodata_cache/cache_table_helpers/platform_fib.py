@@ -109,6 +109,8 @@ def _build_fib_rows(records: list[dict]) -> list[dict]:
         entries = _extract_fiber_channel_entries(record, set(fiber_structure.keys()))
 
         for fiber, patch_cord, channel, intended_measurement in entries:
+            if intended_measurement == "None":
+                continue
             rows.append(
                 {
                     "asset_name": asset_name,
