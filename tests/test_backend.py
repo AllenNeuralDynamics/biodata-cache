@@ -233,7 +233,7 @@ def test_s3_write_qc_metadata(mock_boto3_client):
     backend.write("qc/subject123", pd.DataFrame({"metric": ["value1", "value2"]}))
     assert mock_s3_client.put_object.call_count == 2
     parquet_call = mock_s3_client.put_object.call_args_list[0][1]
-    assert parquet_call["Key"] == f"data-asset-cache/{_VF}/qc/subject_id=subject123/data.pqt"
+    assert parquet_call["Key"] == f"data-asset-cache/{_VF}/qc/raw_asset_name=subject123/data.pqt"
     json_call = mock_s3_client.put_object.call_args_list[1][1]
     assert json_call["Bucket"] == "allen-data-views"
     assert json_call["Key"] == f"data-asset-cache/{_VF}/qc.json"
@@ -273,7 +273,7 @@ def test_s3_read_partitioned_table(mock_boto3_client, mock_duckdb_query):
     expected_df = pd.DataFrame({"metric": ["a"]})
     mock_duckdb_query.return_value = expected_df
     result = S3Backend().read("qc/subject123")
-    assert f"data-asset-cache/{_VF}/qc/subject_id=subject123/data*.pqt" in mock_duckdb_query.call_args[0][0]
+    assert f"data-asset-cache/{_VF}/qc/raw_asset_name=subject123/data*.pqt" in mock_duckdb_query.call_args[0][0]
     pd.testing.assert_frame_equal(result, expected_df)
 
 
@@ -368,7 +368,7 @@ def test_s3_get_location_single_partition(mock_boto3_client):
     mock_boto3_client.return_value = MagicMock()
     backend = S3Backend()
     result = backend.get_location("qc/subject123")
-    assert result == f"s3://allen-data-views/data-asset-cache/{_VF}/qc/subject_id=subject123/data.pqt"
+    assert result == f"s3://allen-data-views/data-asset-cache/{_VF}/qc/raw_asset_name=subject123/data.pqt"
 
 
 @patch("biodata_cache.backend.boto3.client")

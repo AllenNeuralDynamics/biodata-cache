@@ -20,8 +20,8 @@ def test_table_specs_have_unique_keys_and_names():
 def test_table_specs_preserve_storage_contracts():
     quality_control = TABLE_SPECS_BY_NAME["quality_control"]
     assert quality_control.storage_name == "qc"
-    assert quality_control.partition_key == "subject_id"
-    assert PARTITION_KEYS["qc"] == "subject_id"
+    assert quality_control.partition_key == "raw_asset_name"
+    assert PARTITION_KEYS["qc"] == "raw_asset_name"
 
     metadata_core = TABLE_SPECS_BY_NAME["metadata_core"]
     assert metadata_core.sync_job == "fast"

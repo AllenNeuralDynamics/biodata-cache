@@ -139,12 +139,9 @@ def _job_storage_lens() -> None:
 
 
 def _job_qc() -> None:
-    """Build the per-subject quality_control table sequentially."""
-    df_basics = _load_basics()
-    subject_ids = df_basics["subject_id"].dropna().unique() if "subject_id" in df_basics.columns else []
+    """Build the raw-asset-partitioned quality_control table."""
     qc_fn = TABLE_REGISTRY[NAMES["qc"]]
-    for subject_id in subject_ids:
-        qc_fn(subject_id=subject_id, force_update=True)
+    qc_fn(force_update=True)
     publish_registry_fragment(NAMES["qc"])
 
 

@@ -10,7 +10,7 @@ import duckdb
 from biodata_cache import qc
 from biodata_cache.registry import BACKEND
 
-SUBJECT_ID = "818323"
+RAW_ASSET_NAME = "818323"
 BUCKET = "allen-data-views"
 
 
@@ -19,10 +19,10 @@ class TestQCTimestampProof(unittest.TestCase):
 
     def test_timestamp_is_timestamptz_after_write(self):
         """Test timestamp column stored as TIMESTAMPTZ after write."""
-        print(f"\nWriting QC data for subject {SUBJECT_ID} to S3...", flush=True)
-        qc(subject_id=SUBJECT_ID, force_update=True)
+        print(f"\nWriting QC data for raw asset {RAW_ASSET_NAME} to S3...", flush=True)
+        qc(raw_asset_name=RAW_ASSET_NAME, force_update=True)
 
-        s3_path = BACKEND.get_location(f"qc/{SUBJECT_ID}")
+        s3_path = BACKEND.get_location(f"qc/{RAW_ASSET_NAME}")
         print(f"Reading schema from {s3_path}...", flush=True)
 
         rows = duckdb.query(f"DESCRIBE SELECT * FROM read_parquet('{s3_path}')").fetchall()

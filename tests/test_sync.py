@@ -170,20 +170,15 @@ def test_fast_job_builds_all_fast_tables(mock_registry, mock_backend):
 
 @patch("biodata_cache.sync.BACKEND")
 @patch("biodata_cache.sync.TABLE_REGISTRY")
-def test_qc_job_called_per_subject(mock_registry, mock_backend):
+def test_qc_job_called_once_for_all_raw_assets(mock_registry, mock_backend):
     reg = _make_registry(basics_df=pd.DataFrame({"subject_id": ["sub1", "sub2", None]}))
     mock_registry.__getitem__.side_effect = reg.__getitem__
     mock_backend.get_location.return_value = "s3://bucket/path"
 
     run_sync_job("qc")
 
-    reg["quality_control"].assert_has_calls(
-        [call(subject_id="sub1", force_update=True), call(subject_id="sub2", force_update=True)],
-        any_order=True,
-    )
-    assert reg["quality_control"].call_count == 2
-    # asset_basics read from cache, not force-updated
-    reg["asset_basics"].assert_called_once_with()
+    reg["quality_control"].assert_called_once_with(force_update=True)
+    reg["asset_basics"].assert_not_called()
     assert mock_backend.put_registry_fragment.call_args[0][0] == "quality_control"
 
 
@@ -196,7 +191,7 @@ def test_qc_job_no_subjects_still_publishes(mock_registry, mock_backend):
 
     run_sync_job("qc")
 
-    reg["quality_control"].assert_not_called()
+    reg["quality_control"].assert_called_once_with(force_update=True)
     mock_backend.put_registry_fragment.assert_called_once()
 
 
@@ -547,6 +542,6 @@ def test_publish_registry_fragment_payload_is_valid_cache_table(mock_backend):
     parsed = json.loads(payload)
     assert parsed["name"] == "quality_control"
     assert parsed["partitioned"] is True
-    assert parsed["partition_key"] == "subject_id"
+    assert parsed["partition_key"] == "raw_asset_name"
     assert parsed["type"] == "asset"
     assert len(parsed["columns"]) > 0

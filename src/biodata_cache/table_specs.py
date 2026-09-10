@@ -101,10 +101,10 @@ TABLE_SPECS = (
     TableSpec(
         key="qc",
         name="quality_control",
-        description="Quality control table with one row per QC metric, partitioned by subject_id",
+        description="Quality control table with one row per de-duplicated QC metric, partitioned by raw asset name",
         table_type=CacheTableType.asset,
         columns_factory="biodata_cache.cache_table_helpers.qc.qc_columns",
-        partition_key="subject_id",
+        partition_key="raw_asset_name",
         storage_name="qc",
         sync_job="qc",
     ),

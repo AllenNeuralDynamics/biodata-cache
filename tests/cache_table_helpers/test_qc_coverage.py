@@ -40,15 +40,15 @@ def test_qc_lazy_with_force_update(mock_client_class):
             },
         }
     ]
-    path = qc("test-subject", force_update=True, lazy=True)
+    path = qc("test-asset", force_update=True, lazy=True)
     assert isinstance(path, str)
-    assert "qc/subject_id=test-subject" in path
+    assert "qc/raw_asset_name=test-asset" in path
 
 
 def test_qc_lazy_without_force_update():
-    path = qc("test-subject", force_update=False, lazy=True)
+    path = qc("test-asset", force_update=False, lazy=True)
     assert isinstance(path, str)
-    assert "qc/subject_id=test-subject" in path
+    assert "qc/raw_asset_name=test-asset" in path
 
 
 @patch("aind_data_access_api.document_db.MetadataDbClient")
@@ -74,13 +74,13 @@ def test_qc_columns_in_output(mock_client_class):
             },
         }
     ]
-    df = qc("test-subject", force_update=True)
+    df = qc("test-asset", force_update=True)
     for col in ["name", "stage", "modality", "value", "asset_name", "subject_id", "timestamp"]:
         assert col in df.columns
 
 
 @patch("aind_data_access_api.document_db.MetadataDbClient")
-def test_qc_drops_unwanted_columns(mock_client_class):
+def test_qc_does_not_store_status_history_but_keeps_metric_metadata(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
     mock_client_instance.retrieve_docdb_records.return_value = [
@@ -102,10 +102,8 @@ def test_qc_drops_unwanted_columns(mock_client_class):
             },
         }
     ]
-    original_fields = ["name", "modality", "stage", "value", "status_history"]
-    with patch("biodata_cache.cache_table_helpers.qc.QC_METRIC_FIELDS", original_fields + ["object_type"]):
-        df = qc("test-subject", force_update=True)
-    assert "object_type" not in df.columns
+    df = qc("test-asset", force_update=True)
+    assert "object_type" in df.columns
     assert "status_history" not in df.columns
     assert "name" in df.columns
 
@@ -134,7 +132,7 @@ def test_qc_timestamp_parsing_with_z_suffix(mock_client_class):
             },
         }
     ]
-    df = qc("test-subject", force_update=True)
+    df = qc("test-asset", force_update=True)
     assert len(df) == 1
     assert df.iloc[0]["timestamp"] is not None
     assert df.iloc[0]["timestamp"].year == 2025
@@ -164,13 +162,13 @@ def test_qc_timestamp_parsing_invalid_format(mock_client_class):
             },
         }
     ]
-    df = qc("test-subject", force_update=True)
+    df = qc("test-asset", force_update=True)
     assert len(df) == 1
     assert pd.isna(df.iloc[0]["timestamp"])
 
 
 @patch("aind_data_access_api.document_db.MetadataDbClient")
-def test_qc_curation_metric_skipped(mock_client_class):
+def test_qc_curation_metric_is_preserved(mock_client_class):
     mock_client_instance = MagicMock()
     mock_client_class.return_value = mock_client_instance
     mock_client_instance.retrieve_docdb_records.return_value = [
@@ -201,6 +199,6 @@ def test_qc_curation_metric_skipped(mock_client_class):
             },
         }
     ]
-    df = qc("test-subject", force_update=True)
-    assert len(df) == 1
-    assert df.iloc[0]["name"] == "Regular Metric"
+    df = qc("test-asset", force_update=True)
+    assert len(df) == 2
+    assert set(df["name"]) == {"Curation Metric (should be skipped)", "Regular Metric"}
