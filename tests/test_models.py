@@ -4,6 +4,7 @@ import json
 
 from biodata_cache.cache_table_helpers.asset_basics import asset_basics_columns
 from biodata_cache.cache_table_helpers.qc import qc_columns
+from biodata_cache.cache_table_helpers.record_consistency import record_consistency_flags_v2_columns
 from biodata_cache.cache_table_helpers.source_data import source_data_columns
 from biodata_cache.cache_table_helpers.unique_genotypes import unique_genotypes_columns
 from biodata_cache.cache_table_helpers.unique_project_names import unique_project_names_columns
@@ -175,6 +176,12 @@ def test_unique_genotypes_columns():
 def test_asset_basics_columns():
     names = [c.name for c in asset_basics_columns()]
     for expected in ("_id", "_last_modified", "subject_id", "modalities", "project_name"):
+        assert expected in names
+
+
+def test_record_consistency_v2_columns():
+    names = [column.name for column in record_consistency_flags_v2_columns()]
+    for expected in ("run_id", "check_key", "docdb_version", "docdb_id", "name", "status", "peer_docdb_ids"):
         assert expected in names
 
 

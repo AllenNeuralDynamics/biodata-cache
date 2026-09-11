@@ -21,6 +21,7 @@ from biodata_cache.cache_table_helpers import (  # noqa: F401
     platform_visual_learning,
     qc,
     raw_to_derived,
+    record_consistency,
     source_data,
     storage_lens,
     time_to_qc,

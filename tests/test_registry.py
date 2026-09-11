@@ -10,6 +10,7 @@ def test_table_registry_contains_core_functions():
     assert NAMES["basics"] in TABLE_REGISTRY
     assert NAMES["d2r"] in TABLE_REGISTRY
     assert NAMES["qc"] in TABLE_REGISTRY
+    assert NAMES["record_consistency_v2"] in TABLE_REGISTRY
 
 
 def test_registry_values_are_callable():
@@ -18,5 +19,5 @@ def test_registry_values_are_callable():
 
 
 def test_names_dict_completeness():
-    for key in ["upn", "usi", "ugt", "basics", "d2r", "r2d", "qc"]:
+    for key in ["upn", "usi", "ugt", "basics", "d2r", "r2d", "qc", "record_consistency_v2"]:
         assert key in NAMES
