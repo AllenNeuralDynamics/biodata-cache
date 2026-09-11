@@ -2,6 +2,7 @@
 
 import json
 import logging
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -15,14 +16,22 @@ from biodata_cache.record_consistency import (
     CHECK_IMPLEMENTATION_URL,
     CHECK_KEY,
     DOCDB_VERSION,
+    V1_NAME_MISSING_V2_CHECK_KEY,
+    V1_NAME_MISSING_V2_DOCDB_VERSION,
     DuplicateNameCheckSummary,
+    V1NameMissingV2CheckSummary,
     evaluate_duplicate_names_v2,
+    evaluate_v1_names_missing_v2,
 )
 from biodata_cache.utils import CacheLogMessage, setup_logging
 
 TABLE_NAME = "record_consistency_checks"
 MANIFEST_KEY = f"{TABLE_NAME}.manifest.json"
 SOURCE_COLUMNS = ("_id", "name", "location")
+V1_NAME_MISSING_V2_CHECK_DESCRIPTION = 'Fails each DocDB v1 record whose exact "name" has no matches in DocDB v2.'
+V1_NAME_MISSING_V2_CHECK_IMPLEMENTATION_URL = (
+    "https://github.com/AllenNeuralDynamics/biodata-cache/blob/bde9c5e/src/biodata_cache/record_consistency.py#L170"
+)
 RESULT_COLUMNS = (
     "check_key",
     "status",
@@ -62,18 +71,41 @@ def _duplicate_name_inputs(records: list[dict[str, Any]]) -> list[dict[str, Any]
     return [{"_id": record["_id"], "name": record["name"]} for record in records]
 
 
-def _add_asset_basics_context(
+def _add_source_context(
     rows: list[dict[str, Any]],
-    records: list[dict[str, Any]],
+    records: list[Any],
 ) -> None:
     """Add display context without coupling the pure predicate to cache fields."""
     locations = {
-        record["_id"]: record["location"]
+        record.get("_id"): record.get("location")
         for record in records
-        if isinstance(record["_id"], str)
+        if isinstance(record, Mapping) and isinstance(record.get("_id"), str)
     }
     for row in rows:
         row["location"] = locations.get(row["docdb_id"])
+
+
+def _fetch_v1_records() -> list[dict[str, Any]]:
+    """Fetch the complete minimal v1 source population from DocDB."""
+    from aind_data_access_api.document_db import MetadataDbClient
+
+    client = MetadataDbClient(host=registry.API_GATEWAY_HOST, version="v1")
+    return client.retrieve_docdb_records(
+        filter_query={},
+        projection={column: 1 for column in SOURCE_COLUMNS},
+        sort={"_id": 1},
+        limit=0,
+    )
+
+
+def _v1_source_records(records: list[Any]) -> list[Any]:
+    """Normalize projected v1 records while preserving malformed inputs."""
+    return [
+        {column: _nullable_value(record.get(column)) for column in SOURCE_COLUMNS}
+        if isinstance(record, Mapping)
+        else record
+        for record in records
+    ]
 
 
 def _duplicate_name_v2_manifest(summary: DuplicateNameCheckSummary) -> dict[str, Any]:
@@ -94,21 +126,38 @@ def _duplicate_name_v2_manifest(summary: DuplicateNameCheckSummary) -> dict[str,
     }
 
 
+def _v1_name_missing_v2_manifest(summary: V1NameMissingV2CheckSummary) -> dict[str, Any]:
+    """Build manifest accounting for the v1-name coverage check."""
+    return {
+        "check_key": V1_NAME_MISSING_V2_CHECK_KEY,
+        "description": V1_NAME_MISSING_V2_CHECK_DESCRIPTION,
+        "implementation_url": V1_NAME_MISSING_V2_CHECK_IMPLEMENTATION_URL,
+        "docdb_version": V1_NAME_MISSING_V2_DOCDB_VERSION,
+        "candidate_count": summary.candidate_count,
+        "processed_count": summary.processed_count,
+        "skipped_count": summary.skipped_count,
+        "parse_failure_count": summary.parse_failure_count,
+        "passed_count": summary.processed_count - summary.failed_count,
+        "failed_count": summary.failed_count,
+        "unknown_count": 0,
+    }
+
+
 @registry.register_table(registry.NAMES["record_consistency_checks"])
 def record_consistency_checks(force_update: bool = False) -> pd.DataFrame:
     """Build all record-consistency checks from cached prerequisite tables.
 
-    The first registered check detects exact duplicate names in v2 DocDB records.
-    The builder never contacts DocDB, S3, or Code Ocean directly. ``asset_basics``
-    must already have been built by the prerequisite sync job. A failed or
-    malformed source sweep raises before writing data, preserving the previous
-    result.
+    The first check detects exact duplicate names in cached v2 DocDB records.
+    The second checks a complete projected v1 DocDB sweep for names absent from
+    v2. The builder never contacts S3 or Code Ocean. ``asset_basics`` must already
+    have been built by the prerequisite sync job. A failed or malformed source
+    sweep raises before writing data, preserving the previous result.
 
     Args:
-        force_update: If True, rebuild from the current ``asset_basics`` cache.
+        force_update: If True, rebuild from current ``asset_basics`` and DocDB v1.
 
     Returns:
-        Complete check results, including passing singleton rows.
+        Complete check results, including passing rows.
 
     Raises:
         ValueError: If the prerequisite cache is missing, has an invalid schema,
@@ -127,16 +176,30 @@ def record_consistency_checks(force_update: bool = False) -> pd.DataFrame:
         CacheLogMessage(
             backend=registry.BACKEND.__class__.__name__,
             table=TABLE_NAME,
-            message="Updating record-consistency checks from asset_basics",
+            message="Updating record-consistency checks from asset_basics and DocDB v1",
         ).to_json()
     )
     source_records = _asset_basics_records(source)
-    rows, summary = evaluate_duplicate_names_v2(_duplicate_name_inputs(source_records))
-    _add_asset_basics_context(rows, source_records)
-    if not summary.is_complete:
+    duplicate_rows, duplicate_summary = evaluate_duplicate_names_v2(_duplicate_name_inputs(source_records))
+    _add_source_context(duplicate_rows, source_records)
+    if not duplicate_summary.is_complete:
         raise ValueError(
-            f"Cannot publish incomplete v2 duplicate-name flags: {summary.parse_failure_count} parse failures"
+            f"Cannot publish incomplete v2 duplicate-name flags: {duplicate_summary.parse_failure_count} parse failures"
         )
+
+    v1_source_records = _v1_source_records(_fetch_v1_records())
+    v2_names = {row["name"] for row in duplicate_rows}
+    v1_rows, v1_summary = evaluate_v1_names_missing_v2(v1_source_records, v2_names)
+    _add_source_context(v1_rows, v1_source_records)
+    if not v1_summary.is_complete:
+        raise ValueError(
+            f"Cannot publish incomplete v1-name coverage flags: {v1_summary.parse_failure_count} parse failures"
+        )
+
+    rows = sorted(
+        [*duplicate_rows, *v1_rows],
+        key=lambda row: (row["check_key"], row["name"], row["docdb_id"]),
+    )
 
     run_id = uuid4().hex
     checked_at = datetime.now(timezone.utc).isoformat()
@@ -144,7 +207,10 @@ def record_consistency_checks(force_update: bool = False) -> pd.DataFrame:
     result.insert(0, "checked_at", checked_at)
     result.insert(0, "run_id", run_id)
 
-    check_manifests = [_duplicate_name_v2_manifest(summary)]
+    check_manifests = [
+        _duplicate_name_v2_manifest(duplicate_summary),
+        _v1_name_missing_v2_manifest(v1_summary),
+    ]
     manifest = {
         "complete": True,
         "run_id": run_id,
@@ -174,6 +240,6 @@ def record_consistency_checks_columns() -> list[Column]:
         Column(name="status", description="Check result: pass, fail, or unknown"),
         Column(name="docdb_id", description="DocDB record ID"),
         Column(name="docdb_version", description="DocDB metadata version checked"),
-        Column(name="name", description="Exact DocDB asset name used for duplicate grouping"),
-        Column(name="location", description="S3 location from asset_basics, when available"),
+        Column(name="name", description="Exact DocDB asset name evaluated"),
+        Column(name="location", description="S3 location from the source DocDB record, when available"),
     ]
