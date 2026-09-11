@@ -38,17 +38,29 @@ from biodata_cache.cache_table_helpers.swdb_public_assets import SWDB_2026_DERIV
 # plus a mapping in one source's `properties` is all that is needed; parquet
 # stores the NULLs for every other source essentially for free.
 PROPERTY_COLUMNS: dict[str, tuple[str, str]] = {
-    "structure": ("string", "CCF structure acronym for the cell (peak channel for ecephys, imaging-plane target for ophys)"),
+    "structure": (
+        "string",
+        "CCF structure acronym for the cell (peak channel for ecephys, imaging-plane target for ophys)",
+    ),
     "ccf_ap": ("float32", "Anterior-posterior CCF coordinate (microns); NULL for cells with no registration"),
     "ccf_dv": ("float32", "Dorsal-ventral CCF coordinate (microns); NULL for cells with no registration"),
     "ccf_ml": ("float32", "Medial-lateral CCF coordinate (microns, Dynamic Routing convention: small = right)"),
-    "depth_um": ("float32", "Depth below the brain surface (microns): probe depth for ecephys, imaging depth for ophys"),
+    "depth_um": (
+        "float32",
+        "Depth below the brain surface (microns): probe depth for ecephys, imaging depth for ophys",
+    ),
     "mean_rate": ("float32", "Mean event rate over the recording (Hz); spike rate for ecephys"),
     "num_spikes": ("float32", "Total number of detected spikes (ecephys only)"),
     "presence_ratio": ("float32", "Fraction of the recording in which the cell is active"),
     "snr": ("float32", "Signal-to-noise ratio of the cell's waveform (ecephys only)"),
-    "qc_pass": ("boolean", "Whether the cell passes its pipeline's default quality criteria (ecephys) or is classified as a soma (ophys)"),
-    "cell_type_label": ("string", "Cell-type label: sorter decoder class (sua/mua/noise) for ecephys, transcriptomic cluster for co-registered ophys"),
+    "qc_pass": (
+        "boolean",
+        "Whether the cell passes its pipeline's default quality criteria (ecephys) or is classified as a soma (ophys)",
+    ),
+    "cell_type_label": (
+        "string",
+        "Cell-type label: sorter decoder class (sua/mua/noise) for ecephys, transcriptomic cluster for co-registered ophys",
+    ),
     "cell_type_probability": ("float32", "Confidence of cell_type_label, where the source provides one"),
     "soma_probability": ("float32", "Segmentation classifier probability that the ROI is a soma (ophys only)"),
     "area_px": ("float32", "ROI area in FOV pixels (ophys only)"),
@@ -109,9 +121,11 @@ def _derived_names(df_basics: pd.DataFrame, modality_substr: str) -> list[str]:
     if "modalities" not in df_basics.columns or "data_level" not in df_basics.columns:
         return []
     mask = df_basics["modalities"].apply(
-        lambda values: values is not None
-        and not isinstance(values, float)
-        and any(modality_substr in str(value).lower() for value in values)
+        lambda values: (
+            values is not None
+            and not isinstance(values, float)
+            and any(modality_substr in str(value).lower() for value in values)
+        )
     )
     return df_basics[mask & (df_basics["data_level"] == "derived")]["name"].dropna().unique().tolist()
 

@@ -52,6 +52,7 @@ def metadata_core(force_update: bool = False) -> pd.DataFrame:
         df = pd.DataFrame(columns=["_id", "_last_modified"] + CORE_FILES)
 
         from aind_data_access_api.document_db import MetadataDbClient
+
         client = MetadataDbClient(
             host=registry.API_GATEWAY_HOST,
             version="v2",

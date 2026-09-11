@@ -113,17 +113,11 @@ def find_nwb_prefixes(client, location: str) -> list[str]:
     """Find NWB/Zarr stores in an asset's conventional S3 layout."""
     bucket, key = split_s3_uri(location)
     prefixes = [
-        prefix
-        for prefix in _list_common_prefixes(client, bucket, f"{key}/nwb/")
-        if prefix.endswith(ZARR_SUFFIXES)
+        prefix for prefix in _list_common_prefixes(client, bucket, f"{key}/nwb/") if prefix.endswith(ZARR_SUFFIXES)
     ]
     if prefixes:
         return prefixes
-    return [
-        prefix
-        for prefix in _list_common_prefixes(client, bucket, f"{key}/")
-        if prefix.endswith(ZARR_SUFFIXES)
-    ]
+    return [prefix for prefix in _list_common_prefixes(client, bucket, f"{key}/") if prefix.endswith(ZARR_SUFFIXES)]
 
 
 def source_group_path(asset_name: str, nwb_prefix: str) -> str:

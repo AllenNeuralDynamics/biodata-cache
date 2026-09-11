@@ -68,15 +68,17 @@ def test_h5ad_observations_decode_categoricals():
 
 def test_merge_cell_gene_data_preserves_count_columns_and_labels():
     counts = pd.DataFrame({"cell_id": [3], "R1-488-GFP": [7]})
-    labels = pd.DataFrame({
-        "cell_id": ["3"],
-        "cell_class": ["excitatory"],
-        "cell_subclass": ["none"],
-        "cell_type": ["Exc-1"],
-        "cluster_id": [2],
-        "total_counts": [7],
-        "n_genes": [1],
-    })
+    labels = pd.DataFrame(
+        {
+            "cell_id": ["3"],
+            "cell_class": ["excitatory"],
+            "cell_subclass": ["none"],
+            "cell_type": ["Exc-1"],
+            "cluster_id": [2],
+            "total_counts": [7],
+            "n_genes": [1],
+        }
+    )
     merged = _merge_cell_gene_data(counts, labels, "782149")
     assert list(merged.columns) == CELL_GENE_COLUMN_ORDER
     assert merged.iloc[0]["subject_id"] == "782149"
@@ -127,15 +129,19 @@ def test_build_partitions_reads_existing_partition_without_rebuilding():
 
 def test_cell_gene_builder_writes_selected_partition():
     backend = MemoryBackend()
-    with patch(
-        "biodata_cache.cache_table_helpers.platform_visual_learning.registry.BACKEND",
-        backend,
-    ), patch(
-        "biodata_cache.cache_table_helpers.platform_visual_learning.CELL_GENE_ASSETS",
-        {"1": "asset"},
-    ), patch(
-        "biodata_cache.cache_table_helpers.platform_visual_learning._read_cell_gene",
-        return_value=pd.DataFrame({"subject_id": ["1"], "cell_id": ["3"]}),
+    with (
+        patch(
+            "biodata_cache.cache_table_helpers.platform_visual_learning.registry.BACKEND",
+            backend,
+        ),
+        patch(
+            "biodata_cache.cache_table_helpers.platform_visual_learning.CELL_GENE_ASSETS",
+            {"1": "asset"},
+        ),
+        patch(
+            "biodata_cache.cache_table_helpers.platform_visual_learning._read_cell_gene",
+            return_value=pd.DataFrame({"subject_id": ["1"], "cell_id": ["3"]}),
+        ),
     ):
         result = platform_visual_learning_cell_gene(force_update=True, subject_id="1")
     assert result.iloc[0]["cell_id"] == "3"

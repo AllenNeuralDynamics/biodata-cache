@@ -143,10 +143,10 @@ def seeded_backend():
     # The Visual Coding source reads public NWB-Zarr directly, so it is stubbed
     # out here: these tests must never touch S3.
     offline_sources = (ECEPHYS_UNITS, POPHYS_ROIS)
-    with patch("biodata_cache.registry.BACKEND", backend), patch(
-        "biodata_cache.cache_table_helpers.cell_by_everything.tables.asset_basics", _basics
-    ), patch(
-        "biodata_cache.cache_table_helpers.cell_by_everything.tables.SOURCES", offline_sources
+    with (
+        patch("biodata_cache.registry.BACKEND", backend),
+        patch("biodata_cache.cache_table_helpers.cell_by_everything.tables.asset_basics", _basics),
+        patch("biodata_cache.cache_table_helpers.cell_by_everything.tables.SOURCES", offline_sources),
     ):
         yield backend
 
@@ -318,11 +318,13 @@ def test_cell_keys_are_stable_across_a_rebuild(seeded_backend):
 
 
 def test_build_raises_when_every_source_is_empty():
-    with patch("biodata_cache.registry.BACKEND", MemoryBackend()), patch(
-        "biodata_cache.cache_table_helpers.cell_by_everything.tables.asset_basics", _basics
-    ), patch(
-        "biodata_cache.cache_table_helpers.cell_by_everything.tables.SOURCES",
-        (ECEPHYS_UNITS, POPHYS_ROIS),
+    with (
+        patch("biodata_cache.registry.BACKEND", MemoryBackend()),
+        patch("biodata_cache.cache_table_helpers.cell_by_everything.tables.asset_basics", _basics),
+        patch(
+            "biodata_cache.cache_table_helpers.cell_by_everything.tables.SOURCES",
+            (ECEPHYS_UNITS, POPHYS_ROIS),
+        ),
     ):
         with pytest.raises(RuntimeError, match="No cells were projected"):
             build_cell_by_everything()
@@ -525,18 +527,19 @@ def test_reader_source_contributes_cells_through_the_generic_pipeline(seeded_bac
         enumerate_assets=lambda df: ["vcn_asset"],
         reader=lambda asset_name: rows,
     )
-    with patch(
-        "biodata_cache.cache_table_helpers.cell_by_everything.tables.SOURCES", (stub,)
-    ), patch(
-        "biodata_cache.cache_table_helpers.cell_by_everything.tables.asset_basics",
-        lambda: pd.DataFrame(
-            {
-                "name": ["vcn_asset"],
-                "subject_id": ["123456"],
-                "project_name": ["Visual Coding"],
-                "modalities": [["ecephys"]],
-                "data_level": ["derived"],
-            }
+    with (
+        patch("biodata_cache.cache_table_helpers.cell_by_everything.tables.SOURCES", (stub,)),
+        patch(
+            "biodata_cache.cache_table_helpers.cell_by_everything.tables.asset_basics",
+            lambda: pd.DataFrame(
+                {
+                    "name": ["vcn_asset"],
+                    "subject_id": ["123456"],
+                    "project_name": ["Visual Coding"],
+                    "modalities": [["ecephys"]],
+                    "data_level": ["derived"],
+                }
+            ),
         ),
     ):
         build_cell_by_everything()
@@ -611,8 +614,9 @@ def test_existing_partitions_are_not_rewritten(seeded_backend):
         writes.append(table_name)
         return original_write(table_name, data)
 
-    with patch.object(tables, "_read_asset_rows", _tracking_read), patch.object(
-        seeded_backend, "write", _tracking_write
+    with (
+        patch.object(tables, "_read_asset_rows", _tracking_read),
+        patch.object(seeded_backend, "write", _tracking_write),
     ):
         build_cell_by_everything()
 
@@ -716,9 +720,7 @@ def test_existing_partitions_are_cleared_on_force_rewrite(seeded_backend):
 
     with patch.object(seeded_backend, "clear_partition", _tracking):
         build_cell_by_everything(force_rewrite=True)
-    assert sorted(cleared) == sorted(
-        [f"cell_properties/{EPHYS_ASSET}", f"cell_properties/{OPHYS_ASSET}"]
-    )
+    assert sorted(cleared) == sorted([f"cell_properties/{EPHYS_ASSET}", f"cell_properties/{OPHYS_ASSET}"])
 
 
 def test_pending_writes_are_flushed_at_the_end_of_a_source(seeded_backend):
@@ -760,9 +762,7 @@ def test_ecephys_units_does_not_enumerate_visual_coding_assets():
     from biodata_cache.cache_table_helpers.swdb_public_assets import SWDB_2026_DERIVED_ASSETS
 
     vcn = list(SWDB_2026_DERIVED_ASSETS["vcn"])
-    basics = pd.DataFrame(
-        {"name": vcn, "modalities": [["ecephys"]] * len(vcn), "data_level": ["derived"] * len(vcn)}
-    )
+    basics = pd.DataFrame({"name": vcn, "modalities": [["ecephys"]] * len(vcn), "data_level": ["derived"] * len(vcn)})
     assert ECEPHYS_UNITS.enumerate_assets(basics) == []
 
 

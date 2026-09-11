@@ -112,6 +112,7 @@ def _fetch_time_to_qc() -> pd.DataFrame:
     asset_names = derived_df["name"].dropna().tolist()
 
     from aind_data_access_api.document_db import MetadataDbClient
+
     client = MetadataDbClient(
         host=registry.API_GATEWAY_HOST,
         version="v2",

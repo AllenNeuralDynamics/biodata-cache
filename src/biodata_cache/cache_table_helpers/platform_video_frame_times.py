@@ -216,9 +216,7 @@ def _camera_frame_times(edges: np.ndarray, report: dict, label: str) -> np.ndarr
         )
         return edges[:frames_recorded]
 
-    _log(
-        f"  {label}: cannot reconcile edges={len(edges)} with recorded={frames_recorded}; skipping camera"
-    )
+    _log(f"  {label}: cannot reconcile edges={len(edges)} with recorded={frames_recorded}; skipping camera")
     return None
 
 
@@ -341,9 +339,7 @@ def platform_video_frame_times(
 
     df = registry.BACKEND.read(cache_key)
     if df.empty:
-        raise ValueError(
-            f"Cache is empty for asset {asset_name}. Use force_update=True to fetch data from S3."
-        )
+        raise ValueError(f"Cache is empty for asset {asset_name}. Use force_update=True to fetch data from S3.")
     return df
 
 
@@ -351,7 +347,9 @@ def platform_video_frame_times_columns() -> list[Column]:
     """Return platform_behavior-videos_frame-times cache table column definitions."""
     return [
         Column(name="asset_name", description="Raw acquisition asset name (holds behavior-videos)"),
-        Column(name="camera", description="Camera label (e.g. Behavior, Eye, Face, Nose); matches the mp4 filename label"),
+        Column(
+            name="camera", description="Camera label (e.g. Behavior, Eye, Face, Nose); matches the mp4 filename label"
+        ),
         Column(name="frame_index", description="0-based index of the encoded mp4 frame"),
         Column(name="t", description="Session-clock time in seconds of the frame (shared with NWB timestamps)"),
     ]

@@ -30,6 +30,7 @@ def _log(table: str, message: str) -> None:
 
 def _read_session_table() -> pd.DataFrame:
     from aind_dynamic_foraging_database import SESSION_DB
+
     return duckdb_query(f"SELECT * FROM read_parquet('{SESSION_DB}')")
 
 
@@ -97,13 +98,12 @@ def platform_dynamic_foraging_trials(subject_id: str, force_update: bool = False
     df = registry.BACKEND.read(cache_key)
 
     if df.empty and not force_update:
-        raise ValueError(
-            f"Cache is empty for subject {subject_id}. Use force_update=True to fetch data from upstream."
-        )
+        raise ValueError(f"Cache is empty for subject {subject_id}. Use force_update=True to fetch data from upstream.")
 
     if df.empty or force_update:
         setup_logging()
         from aind_dynamic_foraging_database import TRIAL_DB
+
         _log(table, f"Updating cache for subject {subject_id} from upstream trial_table")
         df = _read_subject_partition(TRIAL_DB, str(subject_id))
         if df.empty:
@@ -135,13 +135,12 @@ def platform_dynamic_foraging_events(subject_id: str, force_update: bool = False
     df = registry.BACKEND.read(cache_key)
 
     if df.empty and not force_update:
-        raise ValueError(
-            f"Cache is empty for subject {subject_id}. Use force_update=True to fetch data from upstream."
-        )
+        raise ValueError(f"Cache is empty for subject {subject_id}. Use force_update=True to fetch data from upstream.")
 
     if df.empty or force_update:
         setup_logging()
         from aind_dynamic_foraging_database import EVENT_DB
+
         _log(table, f"Updating cache for subject {subject_id} from upstream event_table")
         df = _read_subject_partition(EVENT_DB, str(subject_id))
         if df.empty:
@@ -160,7 +159,10 @@ def platform_dynamic_foraging_sessions_columns() -> list[Column]:
     list.
     """
     return [
-        Column(name="_session_id", description="Session key (= subject_id_session-date_nwb-suffix); joins to trial/event session_id"),
+        Column(
+            name="_session_id",
+            description="Session key (= subject_id_session-date_nwb-suffix); joins to trial/event session_id",
+        ),
         Column(name="subject_id", description="Mouse ID (string)"),
         Column(name="session_date", description="YYYY-MM-DD"),
         Column(name="nwb_suffix", description="Session start HHMMSS as int (disambiguates same-day sessions)"),
@@ -187,13 +189,19 @@ def platform_dynamic_foraging_sessions_columns() -> list[Column]:
         Column(name="data_source", description="Fine-grained composite: {institute}_{rig_type}_{room}_{hardware}"),
         Column(name="curriculum_name", description="Curriculum name; 'None' = off-curriculum, NULL = not in Han"),
         Column(name="curriculum_version", description="Curriculum version; 'None' = off-curriculum"),
-        Column(name="current_stage_actual", description="Curriculum stage reached (STAGE_1_WARMUP ... STAGE_FINAL/GRADUATED)"),
+        Column(
+            name="current_stage_actual",
+            description="Curriculum stage reached (STAGE_1_WARMUP ... STAGE_FINAL/GRADUATED)",
+        ),
         Column(name="rig", description="Rig name"),
         Column(name="trainer", description="Session trainer"),
         Column(name="PI", description="Principal Investigator"),
         Column(name="weight_after", description="Mouse weight after session"),
         Column(name="water_in_session_total", description="Total water delivered in session"),
-        Column(name="nwb_data_source", description="co_asset | bonsai_s3 | bpod_s3 (build provenance, not a science filter)"),
+        Column(
+            name="nwb_data_source",
+            description="co_asset | bonsai_s3 | bpod_s3 (build provenance, not a science filter)",
+        ),
         Column(name="co_asset_id", description="Code Ocean asset id (NULL if none)"),
         Column(name="co_s3_nwb_uri", description="Code Ocean NWB S3 URI (NULL if none)"),
     ]
@@ -213,7 +221,9 @@ def platform_dynamic_foraging_trials_columns() -> list[Column]:
         Column(name="nwb_suffix", description="Session suffix"),
         Column(name="trial", description="Trial index within the session"),
         Column(name="animal_response", description="0 = lick left, 1 = lick right, 2 = ignore (no response)"),
-        Column(name="earned_reward", description="Earned a non-autowater reward (= rewarded_historyL OR rewarded_historyR)"),
+        Column(
+            name="earned_reward", description="Earned a non-autowater reward (= rewarded_historyL OR rewarded_historyR)"
+        ),
         Column(name="rewarded_historyL", description="Reward delivered on left"),
         Column(name="rewarded_historyR", description="Reward delivered on right"),
         Column(name="reward_probabilityL", description="Scheduled reward probability for left side"),

@@ -66,6 +66,7 @@ def _fetch_raw_ng_link(raw_name: str) -> str | None:
 def _fetch_asset_metadata(asset_names: list[str]) -> dict[str, dict]:
     """Fetch location and processing metadata for stitched assets from the document DB."""
     from aind_data_access_api.document_db import MetadataDbClient
+
     client = MetadataDbClient(
         host=registry.API_GATEWAY_HOST,
         version="v2",
@@ -276,6 +277,11 @@ def assets_smartspim_columns() -> list[Column]:
         Column(name="channel", description="Channel name (e.g. Ex_561_Em_600), or None if unprocessed"),
         Column(name="segmentation_link", description="Neuroglancer segmentation link for this channel"),
         Column(name="quantification_link", description="Neuroglancer quantification link for this channel"),
-        Column(name="alignment_link", description="Neuroglancer link to image_atlas_alignment/neuroglancer_config.json"),
-        Column(name="alignment_ccf_link", description="Neuroglancer link to image_atlas_alignment/ccf_visualization/neuroglancer_config.json"),
+        Column(
+            name="alignment_link", description="Neuroglancer link to image_atlas_alignment/neuroglancer_config.json"
+        ),
+        Column(
+            name="alignment_ccf_link",
+            description="Neuroglancer link to image_atlas_alignment/ccf_visualization/neuroglancer_config.json",
+        ),
     ]

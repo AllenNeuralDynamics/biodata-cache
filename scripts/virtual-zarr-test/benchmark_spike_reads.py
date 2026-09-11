@@ -295,8 +295,7 @@ def main() -> None:
     values = {result.values for _, _, result in results}
     checksums = [result.checksum for _, _, result in results]
     checksums_agree = all(
-        math.isclose(checksums[0], checksum, rel_tol=1e-10, abs_tol=1e-2)
-        for checksum in checksums[1:]
+        math.isclose(checksums[0], checksum, rel_tol=1e-10, abs_tol=1e-2) for checksum in checksums[1:]
     )
     if len(values) != 1 or not checksums_agree:
         print("WARNING: result counts/checksums differ:")

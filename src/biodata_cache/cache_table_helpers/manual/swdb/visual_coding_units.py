@@ -40,8 +40,11 @@ from biodata_cache.utils import CacheLogMessage, setup_logging
 _PUBLIC_BUCKET = "aind-open-data"
 _UNITS_GROUP = "units"
 _LOCATION_COLUMNS = [
-    "id", "ecephys_probe_id", "ecephys_structure_acronym",
-    "anterior_posterior_ccf_coordinate", "dorsal_ventral_ccf_coordinate",
+    "id",
+    "ecephys_probe_id",
+    "ecephys_structure_acronym",
+    "anterior_posterior_ccf_coordinate",
+    "dorsal_ventral_ccf_coordinate",
     "left_right_ccf_coordinate",
 ]
 _MAX_WORKERS = 8
@@ -73,10 +76,7 @@ def _probe_names_by_probe_id(client, bucket: str, nwb_prefix: str) -> dict[int, 
     """
     prefix = f"{nwb_prefix}/general/extracellular_ephys/"
     resp = client.list_objects_v2(Bucket=bucket, Prefix=prefix, Delimiter="/")
-    names = [
-        entry["Prefix"][len(prefix):].rstrip("/")
-        for entry in resp.get("CommonPrefixes", [])
-    ]
+    names = [entry["Prefix"][len(prefix) :].rstrip("/") for entry in resp.get("CommonPrefixes", [])]
     names = [name for name in names if name and name != "electrodes"]
 
     mapping: dict[int, str] = {}
@@ -131,9 +131,9 @@ def _fetch_asset_unit_locations(asset_name: str) -> pd.DataFrame:
         df = pd.DataFrame(data)
         probe_names = _probe_names_by_probe_id(client, bucket, nwb_prefix)
         df["probe_name"] = df.get("ecephys_probe_id", pd.Series(dtype="float64")).map(
-            lambda probe_id, names=probe_names: names.get(int(probe_id), f"probe {int(probe_id)}")
-            if pd.notna(probe_id)
-            else None
+            lambda probe_id, names=probe_names: (
+                names.get(int(probe_id), f"probe {int(probe_id)}") if pd.notna(probe_id) else None
+            )
         )
         df["asset_name"] = asset_name
         frames.append(df)
@@ -150,9 +150,7 @@ def _build_visual_coding_neuropixels_units() -> pd.DataFrame:
 
     frames = []
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
-        for asset_name, result in zip(
-            asset_names, executor.map(_fetch_asset_unit_locations, asset_names), strict=True
-        ):
+        for asset_name, result in zip(asset_names, executor.map(_fetch_asset_unit_locations, asset_names), strict=True):
             if result.empty:
                 continue
             frames.append(result)
@@ -162,12 +160,14 @@ def _build_visual_coding_neuropixels_units() -> pd.DataFrame:
         raise RuntimeError("No Visual Coding Neuropixels unit locations were fetched")
 
     df = pd.concat(frames, ignore_index=True)
-    df = df.rename(columns={
-        "id": "unit_id",
-        "ecephys_structure_acronym": "structure",
-        "anterior_posterior_ccf_coordinate": "ccf_ap",
-        "dorsal_ventral_ccf_coordinate": "ccf_dv",
-    })
+    df = df.rename(
+        columns={
+            "id": "unit_id",
+            "ecephys_structure_acronym": "structure",
+            "anterior_posterior_ccf_coordinate": "ccf_ap",
+            "dorsal_ventral_ccf_coordinate": "ccf_dv",
+        }
+    )
     if "left_right_ccf_coordinate" in df.columns:
         df["ccf_ml"] = 2 * _CCF_ML_MIDLINE_UM - df["left_right_ccf_coordinate"]
         df = df.drop(columns=["left_right_ccf_coordinate"])
@@ -209,9 +209,15 @@ def platform_visual_coding_neuropixels_units_columns() -> list[Column]:
     return [
         Column(name="asset_name", description="Public derived Visual Coding Neuropixels asset name"),
         Column(name="unit_id", description="NWB units-table row id"),
-        Column(name="probe_name", description="Probe display name (e.g. 'probeA'), resolved from the numeric electrode-group probe id"),
+        Column(
+            name="probe_name",
+            description="Probe display name (e.g. 'probeA'), resolved from the numeric electrode-group probe id",
+        ),
         Column(name="structure", description="CCF target structure acronym for the unit's peak channel"),
         Column(name="ccf_ap", description="Anterior-posterior CCF coordinate (microns)"),
         Column(name="ccf_dv", description="Dorsal-ventral CCF coordinate (microns)"),
-        Column(name="ccf_ml", description="Medial-lateral CCF coordinate (microns), mirrored to the Dynamic Routing ccf_ml convention (small = right)"),
+        Column(
+            name="ccf_ml",
+            description="Medial-lateral CCF coordinate (microns), mirrored to the Dynamic Routing ccf_ml convention (small = right)",
+        ),
     ]

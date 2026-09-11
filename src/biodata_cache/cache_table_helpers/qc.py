@@ -157,11 +157,7 @@ def _asset_time(asset_name: str, metadata: dict, source_df: pd.DataFrame) -> str
         and "processing_time" in source_df.columns
     ):
         values = source_df.loc[source_df["name"] == asset_name, "processing_time"]
-        values = [
-            str(value)
-            for value in values.tolist()
-            if value is not None and not pd.isna(value) and value != ""
-        ]
+        values = [str(value) for value in values.tolist() if value is not None and not pd.isna(value) and value != ""]
         if values:
             return max(values)
     for field in ("created", "process_date", "acquisition_start_time"):
@@ -350,7 +346,13 @@ def _cache_tag_statuses(records: list[dict], default_subject_id: str | None = No
             timestamp = None
         for tag, status in statuses.items():
             by_subject[subject_id].append(
-                {"tag": tag, "status": status, "asset_name": record.get("name", ""), "subject_id": subject_id, "timestamp": timestamp}
+                {
+                    "tag": tag,
+                    "status": status,
+                    "asset_name": record.get("name", ""),
+                    "subject_id": subject_id,
+                    "timestamp": timestamp,
+                }
             )
     for subject_id, rows in by_subject.items():
         tag_df = pd.DataFrame.from_records(rows)
@@ -396,7 +398,12 @@ def build_qc_rows(records: list[dict], basics_df: pd.DataFrame, source_df: pd.Da
         for candidates in occurrences.values():
             origin = min(
                 candidates,
-                key=lambda item: (item[0], _asset_time(item[1], metadata.get(item[1], {}), source_df), item[1], item[2]),
+                key=lambda item: (
+                    item[0],
+                    _asset_time(item[1], metadata.get(item[1], {}), source_df),
+                    item[1],
+                    item[2],
+                ),
             )
             origin_distance, asset_name, metric_index, metric, record = origin
             downstream = sorted(

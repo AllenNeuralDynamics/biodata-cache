@@ -99,14 +99,16 @@ def _fake_legacy_root():
         "max_projection_denoised_plane-0": np.ones((8, 8), dtype="float32"),
         "mean_projection_denoised_plane-0": np.ones((8, 8), dtype="float32"),
     }
-    processing = _FakeGroup(
-        {"plane-0": {"image_segmentation": {"roi_table": roi_table}, "images": images}}
-    )
-    optophys = {"general/optophysiology/plane-0": _FakeOptophys({
-        "location": np.array(["242 um"]),
-        "imaging_rate": np.array([6.0]),
-        "grid_spacing": np.array([1.0, 1.0]),
-    })}
+    processing = _FakeGroup({"plane-0": {"image_segmentation": {"roi_table": roi_table}, "images": images}})
+    optophys = {
+        "general/optophysiology/plane-0": _FakeOptophys(
+            {
+                "location": np.array(["242 um"]),
+                "imaging_rate": np.array([6.0]),
+                "grid_spacing": np.array([1.0, 1.0]),
+            }
+        )
+    }
     return _FakeRoot(processing, optophys)
 
 

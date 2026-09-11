@@ -177,9 +177,7 @@ def main() -> None:
             docdb_pull = partial(pull_docdb_api, client, case.docdb_projection)
         else:
             docdb_pull = partial(pull_docdb_http, args.host, case.docdb_projection)
-        docdb_durations, docdb_rows = time_pull(
-            docdb_pull, args.warmups, args.repeats
-        )
+        docdb_durations, docdb_rows = time_pull(docdb_pull, args.warmups, args.repeats)
         cache_durations, cache_rows = time_pull(
             partial(pull_cache, cache_location, case.cache_columns), args.warmups, args.repeats
         )

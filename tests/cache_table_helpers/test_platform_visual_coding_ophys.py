@@ -23,22 +23,24 @@ def _root():
         [(3, 3, 1.0), (4, 3, 1.0), (5, 3, 1.0), (3, 4, 1.0), (4, 4, 1.0), (5, 4, 1.0)],
         dtype=[("x", "u4"), ("y", "u4"), ("weight", "f4")],
     )
-    return _FakeRoot({
-        "processing/ophys/ImageSegmentation/PlaneSegmentation": {
-            "id": np.array([42], dtype="int64"),
-            "global_roi_id": np.array([1042], dtype="int64"),
-            "pixel_mask": pixels,
-            "pixel_mask_index": np.array([len(pixels)], dtype="uint16"),
-        },
-        "general/optophysiology/ImagingPlane": {
-            "location": np.array(["Structure: VISl, Depth: 275 um"]),
-            "imaging_rate": np.array([30.0]),
-            "grid_spacing": np.array([0.78, 0.78]),
-        },
-        "processing/ophys/SummaryImages": {
-            "maximum_intensity_projection": np.ones((8, 8), dtype="float32"),
-        },
-    })
+    return _FakeRoot(
+        {
+            "processing/ophys/ImageSegmentation/PlaneSegmentation": {
+                "id": np.array([42], dtype="int64"),
+                "global_roi_id": np.array([1042], dtype="int64"),
+                "pixel_mask": pixels,
+                "pixel_mask_index": np.array([len(pixels)], dtype="uint16"),
+            },
+            "general/optophysiology/ImagingPlane": {
+                "location": np.array(["Structure: VISl, Depth: 275 um"]),
+                "imaging_rate": np.array([30.0]),
+                "grid_spacing": np.array([0.78, 0.78]),
+            },
+            "processing/ophys/SummaryImages": {
+                "maximum_intensity_projection": np.ones((8, 8), dtype="float32"),
+            },
+        }
+    )
 
 
 def test_find_nwb_prefix_prefers_zarr_root():

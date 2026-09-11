@@ -60,9 +60,16 @@ _N_BINS = _N_TRIALS * _N_PHASE_BINS
 _MAX_WORKERS = 32
 
 _TRIAL_COLUMNS = [
-    "block_index", "rewarded_modality", "start_time", "stop_time",
-    "stim_start_time", "stim_stop_time", "response_time", "reward_time",
-    "is_response", "is_rewarded",
+    "block_index",
+    "rewarded_modality",
+    "start_time",
+    "stop_time",
+    "stim_start_time",
+    "stim_stop_time",
+    "response_time",
+    "reward_time",
+    "is_response",
+    "is_rewarded",
 ]
 _UNIT_COLUMNS = ["unit_id", "is_qc_pass"]
 
@@ -85,7 +92,9 @@ def _log(message: str) -> None:
     )
 
 
-def _read_group_columns(client, bucket: str, nwb_prefix: str, zmetadata: bytes, metadata: dict, group: str, columns: list[str]) -> dict | None:
+def _read_group_columns(
+    client, bucket: str, nwb_prefix: str, zmetadata: bytes, metadata: dict, group: str, columns: list[str]
+) -> dict | None:
     """Read named scalar arrays from one zarr group (e.g. ``intervals/trials`` or ``units``)."""
     paths = [f"{group}/{c}" for c in columns if f"{group}/{c}/.zarray" in metadata]
     if len(paths) != len(columns):
@@ -232,7 +241,9 @@ def _discover_asset(location: str) -> tuple[str, str, dict, bytes, dict, list[di
         if loaded is None:
             continue
         zmetadata, metadata = loaded
-        trial_cols = _read_group_columns(client, bucket, nwb_prefix, zmetadata, metadata, "intervals/trials", _TRIAL_COLUMNS)
+        trial_cols = _read_group_columns(
+            client, bucket, nwb_prefix, zmetadata, metadata, "intervals/trials", _TRIAL_COLUMNS
+        )
         if trial_cols is None:
             continue
         unit_cols = _read_group_columns(client, bucket, nwb_prefix, zmetadata, metadata, "units", _UNIT_COLUMNS)
@@ -379,8 +390,12 @@ def platform_swdb_dr_switch(force_update: bool = False) -> pd.DataFrame:
                 frames.append(asset_df)
             _log(f"{asset_name}: {len(asset_df)} rows")
 
-        df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(
-            columns=["asset_name", "unit_id", "direction", "bin_index", "template_x", "mean_rate_hz", "n_instances"]
+        df = (
+            pd.concat(frames, ignore_index=True)
+            if frames
+            else pd.DataFrame(
+                columns=["asset_name", "unit_id", "direction", "bin_index", "template_x", "mean_rate_hz", "n_instances"]
+            )
         )
         registry.BACKEND.write(registry.NAMES["swdb_dr_switch"], df)
 
@@ -393,9 +408,17 @@ def platform_swdb_dr_switch_columns() -> list[Column]:
         Column(name="unit_id", description="Unit identifier; joinable with platform_ecephys_units.unit_id"),
         Column(name="direction", description="Block-switch type: 'aud_to_vis' or 'vis_to_aud'"),
         Column(name="bin_index", description="Index into the shared template bin grid (60 bins per trial)"),
-        Column(name="template_x", description="Bin center on the template x-axis: 0..5, where each integer is a trial boundary (0=start of trial -2, 2=switch trial onset, 5=end of trial +2). Every switch instance's 5 real trials are linearly time-warped onto this axis regardless of their real duration."),
-        Column(name="mean_rate_hz", description="Mean firing rate in this bin, averaged (by real seconds covered, not instance count) across every switch of this direction in the unit's own session"),
-        Column(name="n_instances", description="Number of switch instances of this direction in the unit's own session"),
+        Column(
+            name="template_x",
+            description="Bin center on the template x-axis: 0..5, where each integer is a trial boundary (0=start of trial -2, 2=switch trial onset, 5=end of trial +2). Every switch instance's 5 real trials are linearly time-warped onto this axis regardless of their real duration.",
+        ),
+        Column(
+            name="mean_rate_hz",
+            description="Mean firing rate in this bin, averaged (by real seconds covered, not instance count) across every switch of this direction in the unit's own session",
+        ),
+        Column(
+            name="n_instances", description="Number of switch instances of this direction in the unit's own session"
+        ),
     ]
 
 
@@ -422,12 +445,29 @@ def platform_swdb_dr_switch_markers(force_update: bool = False) -> pd.DataFrame:
 def platform_swdb_dr_switch_markers_columns() -> list[Column]:
     return [
         Column(name="direction", description="Block-switch type: 'aud_to_vis' or 'vis_to_aud'"),
-        Column(name="trial_offset", description="Trial position relative to the switch trial: -2..-1 end the outgoing block, 0 is the switch trial, +1..+2 start the incoming block"),
-        Column(name="stim_on_x", description="Median template-x position (see platform_swdb_dr_switch.template_x) of this trial's stimulus onset"),
+        Column(
+            name="trial_offset",
+            description="Trial position relative to the switch trial: -2..-1 end the outgoing block, 0 is the switch trial, +1..+2 start the incoming block",
+        ),
+        Column(
+            name="stim_on_x",
+            description="Median template-x position (see platform_swdb_dr_switch.template_x) of this trial's stimulus onset",
+        ),
         Column(name="stim_off_x", description="Median template-x position of this trial's stimulus offset"),
-        Column(name="response_x", description="Median template-x position of this trial's response, in instances that had one (null if none did)"),
-        Column(name="response_frac", description="Fraction of instances of this direction where this trial had a response"),
-        Column(name="reward_x", description="Median template-x position of this trial's reward delivery, in instances that had one (null if none did)"),
+        Column(
+            name="response_x",
+            description="Median template-x position of this trial's response, in instances that had one (null if none did)",
+        ),
+        Column(
+            name="response_frac", description="Fraction of instances of this direction where this trial had a response"
+        ),
+        Column(
+            name="reward_x",
+            description="Median template-x position of this trial's reward delivery, in instances that had one (null if none did)",
+        ),
         Column(name="reward_frac", description="Fraction of instances of this direction where this trial was rewarded"),
-        Column(name="n_instances", description="Number of switch instances (across every session) this marker is averaged over"),
+        Column(
+            name="n_instances",
+            description="Number of switch instances (across every session) this marker is averaged over",
+        ),
     ]

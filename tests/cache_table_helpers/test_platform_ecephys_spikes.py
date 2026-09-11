@@ -225,9 +225,7 @@ def test_open_units_group_no_units_returns_none(mock_load):
 @patch("biodata_cache.cache_table_helpers.platform_ecephys_spikes._open_units_group")
 @patch("biodata_cache.cache_table_helpers.platform_ecephys_spikes._extract_spikes")
 @patch("biodata_cache.cache_table_helpers.platform_ecephys_spikes.registry")
-def test_fetch_asset_concatenates_multiple_nwbs(
-    mock_registry, mock_extract, mock_open, mock_find, mock_boto3
-):
+def test_fetch_asset_concatenates_multiple_nwbs(mock_registry, mock_extract, mock_open, mock_find, mock_boto3):
     mock_registry.NAMES = {"ecephys_spikes": "platform_ecephys_spikes"}
     mock_registry.BACKEND = MagicMock()
     mock_registry.BACKEND.__class__.__name__ = "MemoryBackend"
@@ -235,9 +233,7 @@ def test_fetch_asset_concatenates_multiple_nwbs(
     mock_find.return_value = ["k/nwb/experiment1_recording1.nwb", "k/nwb/experiment2_recording1.nwb"]
     mock_open.side_effect = ["UNITS1", None]
     mock_extract.return_value = [
-        pd.DataFrame(
-            {"experiment": ["e"], "device_name": ["Probe A"], "unit_name": ["u0"], "spike_time": [0.1]}
-        )
+        pd.DataFrame({"experiment": ["e"], "device_name": ["Probe A"], "unit_name": ["u0"], "spike_time": [0.1]})
     ]
 
     result = _fetch_asset_ecephys_spikes("asset_derived", location="s3://bucket/abc")

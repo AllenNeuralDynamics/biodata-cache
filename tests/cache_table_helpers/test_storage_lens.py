@@ -84,8 +84,7 @@ def test_get_ssl_cert_uses_bundled_cert(mock_exists):
     mock_exists.return_value = False
     mock_files = MagicMock()
     mock_files.return_value.joinpath.return_value.read_bytes.return_value = b"cert-data"
-    with patch("biodata_cache.cache_table_helpers.storage_lens.files", mock_files), \
-         patch("builtins.open", MagicMock()):
+    with patch("biodata_cache.cache_table_helpers.storage_lens.files", mock_files), patch("builtins.open", MagicMock()):
         _get_ssl_cert()
     mock_files.return_value.joinpath.assert_called_once_with("global-bundle.pem")
 
@@ -99,9 +98,11 @@ def test_get_ssl_cert_downloads_if_missing(mock_exists):
     mock_resp.__exit__ = MagicMock(return_value=False)
     mock_files = MagicMock()
     mock_files.return_value.joinpath.return_value.read_bytes.side_effect = FileNotFoundError
-    with patch("biodata_cache.cache_table_helpers.storage_lens.files", mock_files), \
-         patch("biodata_cache.cache_table_helpers.storage_lens.urllib.request.urlopen", return_value=mock_resp), \
-         patch("builtins.open", MagicMock()):
+    with (
+        patch("biodata_cache.cache_table_helpers.storage_lens.files", mock_files),
+        patch("biodata_cache.cache_table_helpers.storage_lens.urllib.request.urlopen", return_value=mock_resp),
+        patch("builtins.open", MagicMock()),
+    ):
         _get_ssl_cert()
 
 
@@ -110,9 +111,11 @@ def test_get_ssl_cert_skips_download_if_present(mock_exists):
     mock_exists.return_value = True
     mock_files = MagicMock()
     mock_files.return_value.joinpath.return_value.read_bytes.return_value = b"cert-data"
-    with patch("biodata_cache.cache_table_helpers.storage_lens.files", mock_files), \
-         patch("biodata_cache.cache_table_helpers.storage_lens.urllib.request.urlopen") as mock_urlopen, \
-         patch("builtins.open", MagicMock()):
+    with (
+        patch("biodata_cache.cache_table_helpers.storage_lens.files", mock_files),
+        patch("biodata_cache.cache_table_helpers.storage_lens.urllib.request.urlopen") as mock_urlopen,
+        patch("builtins.open", MagicMock()),
+    ):
         _get_ssl_cert()
         mock_urlopen.assert_not_called()
 
@@ -136,8 +139,9 @@ def test_fetch_storage_lens_calls_rds(mock_get_secret, mock_cert):
     mock_eng.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
     mock_eng.connect.return_value.__exit__ = MagicMock(return_value=False)
 
-    with patch("sqlalchemy.create_engine", return_value=mock_eng), patch(
-        "pandas.read_sql_query", return_value=iter([_SAMPLE_DF.copy()])
+    with (
+        patch("sqlalchemy.create_engine", return_value=mock_eng),
+        patch("pandas.read_sql_query", return_value=iter([_SAMPLE_DF.copy()])),
     ):
         result = _fetch_storage_lens()
 

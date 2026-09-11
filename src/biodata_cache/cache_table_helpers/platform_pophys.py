@@ -166,15 +166,11 @@ def _download_legacy_zarr_store(
     for plane in planes:
         if plane == _LEGACY_SINGLE_PLANE:
             array_prefixes = [
-                f"{_LEGACY_SINGLE_ROI}/{name}"
-                for name in ("id", "is_soma", "pixel_mask", "pixel_mask_index")
+                f"{_LEGACY_SINGLE_ROI}/{name}" for name in ("id", "is_soma", "pixel_mask", "pixel_mask_index")
             ]
             array_prefixes.extend(
                 [f"{_LEGACY_SINGLE_IMAGES}/maximum_intensity_projection"]
-                + [
-                    f"{_LEGACY_SINGLE_OPTOPHYS}/{name}"
-                    for name in ("location", "imaging_rate", "grid_spacing")
-                ]
+                + [f"{_LEGACY_SINGLE_OPTOPHYS}/{name}" for name in ("location", "imaging_rate", "grid_spacing")]
             )
             prefixes.extend(array_prefixes)
             continue
@@ -353,9 +349,7 @@ def _write_fov_png(asset_name: str, plane: str, name: str, projection: np.ndarra
     registry.BACKEND.put_bytes(key, _projection_png(projection), "image/png")
 
 
-def _extract_plane_rois(
-    root, plane: str, asset_name: str, raw_name: str | None
-) -> list[dict]:
+def _extract_plane_rois(root, plane: str, asset_name: str, raw_name: str | None) -> list[dict]:
     """Build one ROI record per segmented ROI in a single imaging plane.
 
     Reads the plane's segmentation masks, per-ROI quality fields, and imaging-plane
@@ -415,9 +409,7 @@ def _extract_plane_rois(
     return rows
 
 
-def _extract_legacy_plane_rois(
-    root, plane: str, asset_name: str, raw_name: str | None
-) -> list[dict]:
+def _extract_legacy_plane_rois(root, plane: str, asset_name: str, raw_name: str | None) -> list[dict]:
     """Build ROI records from a legacy NWB sparse pixel-mask table."""
     group = root[_PROCESSING_GROUP][plane]
     roi_table = group["image_segmentation"]["roi_table"]
@@ -486,9 +478,7 @@ def _extract_legacy_plane_rois(
     return rows
 
 
-def _extract_legacy_single_plane_rois(
-    root, asset_name: str, raw_name: str | None
-) -> list[dict]:
+def _extract_legacy_single_plane_rois(root, asset_name: str, raw_name: str | None) -> list[dict]:
     """Build ROI records from the older shared legacy PlaneSegmentation table."""
     roi_table = root[_LEGACY_SINGLE_ROI]
     roi_ids = roi_table["id"][:]
@@ -650,9 +640,7 @@ def platform_pophys(
 
     df = registry.BACKEND.read(cache_key)
     if df.empty:
-        raise ValueError(
-            f"Cache is empty for asset {asset_name}. Use force_update=True to fetch data from S3."
-        )
+        raise ValueError(f"Cache is empty for asset {asset_name}. Use force_update=True to fetch data from S3.")
 
     return df
 

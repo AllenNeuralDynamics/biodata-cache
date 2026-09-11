@@ -74,7 +74,9 @@ def test_parse_row_valid():
 
 
 def test_parse_row_error_keeps_exc_info():
-    row = _row("2026-07-27T10:00:00+00:00", "acq1", "aind-fip-dff", "stage_error", "failed", level="ERROR", exc="Traceback...")
+    row = _row(
+        "2026-07-27T10:00:00+00:00", "acq1", "aind-fip-dff", "stage_error", "failed", level="ERROR", exc="Traceback..."
+    )
     parsed = cw.parse_row(row)
     assert parsed["error_info"] == "Traceback..."
     assert parsed["level"] == "ERROR"
@@ -263,7 +265,6 @@ def test_build_all_operations_uses_shared_operations_sidecar():
 
     read_scan.assert_called_once_with("operations")
     assert write_scan.call_args[0][0] == "operations"
-
 
 
 def test_platform_operations_reads_cache():

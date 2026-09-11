@@ -45,21 +45,55 @@ COREG_ASSETS = {
 }
 
 GENE_COLUMNS = [
-    "R1-488-GFP", "R1-561-Slc17a7", "R2-488-Ndnf", "R2-514-Hpse", "R2-561-Pthlh",
-    "R2-594-Chat", "R2-638-Tac1", "R3-488-Calb1", "R3-514-Mme", "R3-561-Crh",
-    "R3-594-Reln", "R3-638-Tac2", "R4-488-Lamp5", "R4-514-Calb2", "R4-561-Pdyn",
-    "R4-594-Penk", "R4-638-Gad2", "R5-488-Npy", "R5-514-Pvalb", "R5-561-Cck",
-    "R5-594-Sst", "R5-638-Vip",
+    "R1-488-GFP",
+    "R1-561-Slc17a7",
+    "R2-488-Ndnf",
+    "R2-514-Hpse",
+    "R2-561-Pthlh",
+    "R2-594-Chat",
+    "R2-638-Tac1",
+    "R3-488-Calb1",
+    "R3-514-Mme",
+    "R3-561-Crh",
+    "R3-594-Reln",
+    "R3-638-Tac2",
+    "R4-488-Lamp5",
+    "R4-514-Calb2",
+    "R4-561-Pdyn",
+    "R4-594-Penk",
+    "R4-638-Gad2",
+    "R5-488-Npy",
+    "R5-514-Pvalb",
+    "R5-561-Cck",
+    "R5-594-Sst",
+    "R5-638-Vip",
 ]
 
 CELL_GENE_COLUMN_ORDER = [
-    "subject_id", "cell_id", "cell_class", "cell_subclass", "cell_type",
-    "cluster_id", "total_counts", "n_genes", *GENE_COLUMNS,
+    "subject_id",
+    "cell_id",
+    "cell_class",
+    "cell_subclass",
+    "cell_type",
+    "cluster_id",
+    "total_counts",
+    "n_genes",
+    *GENE_COLUMNS,
 ]
 
 COREG_SOURCE_COLUMNS = [
-    "session_name", "session_key", "unique_roicat_id", "matched", "unique_roi_id",
-    "cz_stack_id", "max_iou", "plane_id", "resolved_cz_stack_id", "undecided", "changed", "hcr_id",
+    "session_name",
+    "session_key",
+    "unique_roicat_id",
+    "matched",
+    "unique_roi_id",
+    "cz_stack_id",
+    "max_iou",
+    "plane_id",
+    "resolved_cz_stack_id",
+    "undecided",
+    "changed",
+    "hcr_id",
 ]
 COREG_COLUMN_ORDER = ["subject_id", *COREG_SOURCE_COLUMNS, "roi_id"]
 
@@ -204,8 +238,10 @@ def platform_visual_learning_cell_gene_columns() -> list[Column]:
         "total_counts": "Total counts across gene channels",
         "n_genes": "Number of detected gene channels",
     }
-    return [Column(name=name, description=descriptions.get(name, f"HCR expression count for {name}"))
-            for name in CELL_GENE_COLUMN_ORDER]
+    return [
+        Column(name=name, description=descriptions.get(name, f"HCR expression count for {name}"))
+        for name in CELL_GENE_COLUMN_ORDER
+    ]
 
 
 def platform_visual_learning_coreg_columns() -> list[Column]:

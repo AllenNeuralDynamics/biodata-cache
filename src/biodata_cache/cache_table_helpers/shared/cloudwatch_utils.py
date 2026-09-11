@@ -96,7 +96,6 @@ def write_last_scan(scope: str, dt: datetime) -> None:
     registry.BACKEND.put_json(_last_scan_key(scope), json.dumps({"last_scan": dt.isoformat()}))
 
 
-
 def cloudwatch_url(log_stream: str | None) -> str | None:
     """Build a CloudWatch console deep link to a log stream, or None.
 
@@ -439,9 +438,7 @@ def platform_operations(
 
     df = registry.BACKEND.read(cache_key)
     if df.empty:
-        raise ValueError(
-            f"Cache is empty for asset {asset_name}. Use force_update=True to fetch data from CloudWatch."
-        )
+        raise ValueError(f"Cache is empty for asset {asset_name}. Use force_update=True to fetch data from CloudWatch.")
     return df
 
 

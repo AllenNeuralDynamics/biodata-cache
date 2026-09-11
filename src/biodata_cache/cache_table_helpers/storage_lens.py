@@ -44,6 +44,7 @@ def _get_ssl_cert() -> str:
     if not os.path.exists(_CERT_PATH):
         try:
             import certifi
+
             ctx = ssl.create_default_context(cafile=certifi.where())
         except ImportError:
             ctx = ssl._create_unverified_context()

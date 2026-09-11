@@ -45,6 +45,7 @@ def source_data(force_update: bool = False) -> pd.DataFrame:
             ).to_json()
         )
         from aind_data_access_api.document_db import MetadataDbClient
+
         client = MetadataDbClient(
             host=registry.API_GATEWAY_HOST,
             version="v2",

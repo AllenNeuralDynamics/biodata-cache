@@ -81,9 +81,7 @@ def _fetch_mouselight_neurons() -> list[dict]:
     Returns a list of row dicts with ``id``, ``id_string``, ``region`` and a
     JSON-encoded ``tracings`` field (``[{"id", "kind"}, ...]``).
     """
-    payload = json.dumps(
-        {"query": SEARCH_NEURONS_QUERY, "variables": {"context": _build_search_context()}}
-    ).encode()
+    payload = json.dumps({"query": SEARCH_NEURONS_QUERY, "variables": {"context": _build_search_context()}}).encode()
     req = urllib.request.Request(
         ML_GRAPHQL_URL,
         data=payload,

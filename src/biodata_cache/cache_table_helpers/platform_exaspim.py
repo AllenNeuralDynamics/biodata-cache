@@ -35,6 +35,7 @@ def _fetch_raw_ng_link(raw_name: str) -> str | None:
 def _fetch_asset_metadata(asset_names: list[str]) -> dict[str, dict]:
     """Fetch location metadata for fused assets from the document DB."""
     from aind_data_access_api.document_db import MetadataDbClient
+
     client = MetadataDbClient(
         host=registry.API_GATEWAY_HOST,
         version="v2",
