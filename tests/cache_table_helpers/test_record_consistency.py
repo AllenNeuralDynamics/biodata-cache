@@ -55,9 +55,14 @@ def test_builds_flags_from_asset_basics_and_writes_completion_manifest(mock_back
         {
             "candidate_count": 3,
             "check_key": "docdb_duplicate_name_v2",
+            "description": 'Flags each record in DocDB v2 whose exact "name" key is identical to another v2 record.',
             "docdb_version": "v2",
             "duplicate_group_count": 1,
             "failed_count": 2,
+            "implementation_url": (
+                "https://github.com/AllenNeuralDynamics/biodata-cache/blob/5b10df0/"
+                "src/biodata_cache/record_consistency.py#L39"
+            ),
             "parse_failure_count": 0,
             "passed_count": 1,
             "processed_count": 3,

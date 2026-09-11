@@ -11,6 +11,8 @@ import pandas as pd
 import biodata_cache.registry as registry
 from biodata_cache.models import Column
 from biodata_cache.record_consistency import (
+    CHECK_DESCRIPTION,
+    CHECK_IMPLEMENTATION_URL,
     CHECK_KEY,
     DOCDB_VERSION,
     DuplicateNameCheckSummary,
@@ -59,6 +61,8 @@ def _duplicate_name_v2_manifest(summary: DuplicateNameCheckSummary) -> dict[str,
     """Build manifest accounting for the v2 duplicate-name check."""
     return {
         "check_key": CHECK_KEY,
+        "description": CHECK_DESCRIPTION,
+        "implementation_url": CHECK_IMPLEMENTATION_URL,
         "docdb_version": DOCDB_VERSION,
         "candidate_count": summary.candidate_count,
         "processed_count": summary.processed_count,
