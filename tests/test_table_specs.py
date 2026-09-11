@@ -34,9 +34,9 @@ def test_table_specs_preserve_storage_contracts():
     assert manual_tables
     assert all(spec.sync_job is None for spec in manual_tables)
 
-    record_consistency = TABLE_SPECS_BY_NAME["record_consistency_flags_v2"]
-    assert record_consistency.key == "record_consistency_v2"
-    assert record_consistency.sync_job == "record_consistency_v2"
+    record_consistency = TABLE_SPECS_BY_NAME["record_consistency_checks"]
+    assert record_consistency.key == "record_consistency_checks"
+    assert record_consistency.sync_job == "record_consistency_checks"
     assert record_consistency.partitioned is False
 
 

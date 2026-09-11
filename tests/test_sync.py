@@ -29,7 +29,7 @@ def _make_registry(basics_df=None, sessions_df=None):
         "unique_genotypes": MagicMock(),
         "asset_basics": MagicMock(return_value=basics_df),
         "source_data": MagicMock(),
-        "record_consistency_flags_v2": MagicMock(),
+        "record_consistency_checks": MagicMock(),
         "metadata_core": MagicMock(),
         "raw_to_derived": MagicMock(),
         "quality_control": MagicMock(),
@@ -124,20 +124,20 @@ def test_asset_basics_job_registers_and_publishes(mock_registry, mock_backend):
     assert published == {"asset_basics", "source_data"}
 
 
-# --- record_consistency_v2 job ----------------------------------------------
+# --- record_consistency_checks job ------------------------------------------
 
 
 @patch("biodata_cache.sync.BACKEND")
 @patch("biodata_cache.sync.TABLE_REGISTRY")
-def test_record_consistency_v2_job_builds_and_publishes(mock_registry, mock_backend):
+def test_record_consistency_checks_job_builds_and_publishes(mock_registry, mock_backend):
     reg = _make_registry()
     mock_registry.__getitem__.side_effect = reg.__getitem__
     mock_backend.get_location.return_value = "s3://bucket/path"
 
-    run_sync_job("record_consistency_v2")
+    run_sync_job("record_consistency_checks")
 
-    reg["record_consistency_flags_v2"].assert_called_once_with(force_update=True)
-    assert mock_backend.put_registry_fragment.call_args.args[0] == "record_consistency_flags_v2"
+    reg["record_consistency_checks"].assert_called_once_with(force_update=True)
+    assert mock_backend.put_registry_fragment.call_args.args[0] == "record_consistency_checks"
 
 
 # --- fast job ----------------------------------------------------------------
@@ -491,7 +491,7 @@ def test_update_all_tables_runs_every_job(mock_run):
 def test_update_all_tables_fast_only(mock_run):
     update_all_tables(fast=True, slow=False)
     ran = [c[0][0] for c in mock_run.call_args_list]
-    assert ran == ["asset_basics", "record_consistency_v2", "fast"]
+    assert ran == ["asset_basics", "record_consistency_checks", "fast"]
 
 
 @patch("biodata_cache.sync.run_sync_job")
@@ -500,7 +500,7 @@ def test_update_all_tables_slow_only(mock_run):
     ran = [c[0][0] for c in mock_run.call_args_list]
     assert ran[0] == "asset_basics"
     assert "fast" not in ran
-    assert "record_consistency_v2" not in ran
+    assert "record_consistency_checks" not in ran
     assert "qc" in ran and "time_to_qc" in ran
 
 
@@ -537,7 +537,7 @@ def test_publish_cache_registry_fragment_names(mock_backend):
         "unique_genotypes",
         "asset_basics",
         "source_data",
-        "record_consistency_flags_v2",
+        "record_consistency_checks",
         "quality_control",
         "platform_smartspim",
         "metadata_upgrade",

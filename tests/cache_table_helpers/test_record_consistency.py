@@ -1,4 +1,4 @@
-"""Unit tests for the v2 record-consistency cache table."""
+"""Unit tests for the record-consistency checks cache table."""
 
 import json
 from unittest.mock import patch
@@ -12,8 +12,8 @@ from biodata_cache.cache_table_helpers.record_consistency import (
     RESULT_COLUMNS,
     TABLE_COLUMNS,
     TABLE_NAME,
-    record_consistency_flags_v2,
-    record_consistency_flags_v2_columns,
+    record_consistency_checks,
+    record_consistency_checks_columns,
 )
 
 
@@ -33,7 +33,7 @@ def test_builds_flags_from_asset_basics_and_writes_completion_manifest(mock_back
         ),
     ]
 
-    result = record_consistency_flags_v2(force_update=True)
+    result = record_consistency_checks(force_update=True)
 
     assert list(result.columns) == list(TABLE_COLUMNS)
     assert result["run_id"].nunique() == 1
@@ -46,12 +46,25 @@ def test_builds_flags_from_asset_basics_and_writes_completion_manifest(mock_back
     assert manifest_key == MANIFEST_KEY
     manifest = json.loads(manifest_text)
     assert manifest["complete"] is True
-    assert manifest["check_key"] == "docdb_duplicate_name_v2"
-    assert manifest["docdb_version"] == "v2"
-    assert manifest["candidate_count"] == 3
+    assert manifest["check_count"] == 1
+    assert manifest["passed_count"] == 1
     assert manifest["failed_count"] == 2
-    assert manifest["duplicate_group_count"] == 1
+    assert manifest["unknown_count"] == 0
     assert manifest["row_count"] == 3
+    assert manifest["checks"] == [
+        {
+            "candidate_count": 3,
+            "check_key": "docdb_duplicate_name_v2",
+            "docdb_version": "v2",
+            "duplicate_group_count": 1,
+            "failed_count": 2,
+            "parse_failure_count": 0,
+            "passed_count": 1,
+            "processed_count": 3,
+            "skipped_count": 0,
+            "unknown_count": 0,
+        }
+    ]
 
 
 def test_builder_round_trips_through_memory_backend():
@@ -65,7 +78,7 @@ def test_builder_round_trips_through_memory_backend():
     )
 
     with patch("biodata_cache.cache_table_helpers.record_consistency.registry.BACKEND", backend):
-        result = record_consistency_flags_v2(force_update=True)
+        result = record_consistency_checks(force_update=True)
 
     assert backend.read(TABLE_NAME).equals(result)
     assert json.loads(backend.get_json(MANIFEST_KEY))["complete"] is True
@@ -76,7 +89,7 @@ def test_returns_cached_table_without_rebuilding_by_default(mock_backend):
     cached = _basics({"_id": "v2-a", "name": "cached", "location": None})
     mock_backend.read.return_value = cached
 
-    result = record_consistency_flags_v2()
+    result = record_consistency_checks()
 
     assert result is cached
     mock_backend.read.assert_called_once_with(TABLE_NAME)
@@ -89,7 +102,7 @@ def test_missing_asset_basics_fails_without_writing(mock_backend):
     mock_backend.read.side_effect = [pd.DataFrame(), pd.DataFrame()]
 
     with pytest.raises(ValueError, match="asset_basics cache is empty"):
-        record_consistency_flags_v2(force_update=True)
+        record_consistency_checks(force_update=True)
 
     mock_backend.write.assert_not_called()
     mock_backend.put_json.assert_not_called()
@@ -100,7 +113,7 @@ def test_invalid_asset_basics_schema_fails_without_writing(mock_backend):
     mock_backend.read.side_effect = [pd.DataFrame(), pd.DataFrame({"_id": ["v2-a"], "location": [None]})]
 
     with pytest.raises(ValueError, match="missing required columns"):
-        record_consistency_flags_v2(force_update=True)
+        record_consistency_checks(force_update=True)
 
     mock_backend.write.assert_not_called()
     mock_backend.put_json.assert_not_called()
@@ -117,7 +130,7 @@ def test_incomplete_classification_preserves_previous_result(mock_backend):
     ]
 
     with pytest.raises(ValueError, match="parse failures"):
-        record_consistency_flags_v2(force_update=True)
+        record_consistency_checks(force_update=True)
 
     mock_backend.write.assert_not_called()
     mock_backend.put_json.assert_not_called()
@@ -125,7 +138,7 @@ def test_incomplete_classification_preserves_previous_result(mock_backend):
 
 def test_result_and_registry_columns_match():
     """The serialized output and registry metadata expose the same fields."""
-    column_names = tuple(column.name for column in record_consistency_flags_v2_columns())
+    column_names = tuple(column.name for column in record_consistency_checks_columns())
 
     assert column_names == TABLE_COLUMNS
     assert RESULT_COLUMNS == TABLE_COLUMNS[2:]

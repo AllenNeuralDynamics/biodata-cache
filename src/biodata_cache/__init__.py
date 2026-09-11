@@ -55,7 +55,7 @@ from biodata_cache.cache_table_helpers.platform_visual_learning import (  # noqa
 )
 from biodata_cache.cache_table_helpers.qc import qc, qc_columns  # noqa: F401
 from biodata_cache.cache_table_helpers.raw_to_derived import raw_to_derived  # noqa: F401
-from biodata_cache.cache_table_helpers.record_consistency import record_consistency_flags_v2  # noqa: F401
+from biodata_cache.cache_table_helpers.record_consistency import record_consistency_checks  # noqa: F401
 from biodata_cache.cache_table_helpers.source_data import source_data  # noqa: F401
 from biodata_cache.cache_table_helpers.storage_lens import storage_lens  # noqa: F401
 from biodata_cache.cache_table_helpers.time_to_qc import time_to_qc  # noqa: F401

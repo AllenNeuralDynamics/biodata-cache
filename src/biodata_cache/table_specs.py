@@ -91,12 +91,12 @@ TABLE_SPECS = (
         sync_job="asset_basics",
     ),
     TableSpec(
-        key="record_consistency_v2",
-        name="record_consistency_flags_v2",
-        description="V2 DocDB record-consistency flags for duplicate asset names",
+        key="record_consistency_checks",
+        name="record_consistency_checks",
+        description="Record-consistency check results, one row per evaluated record and check",
         table_type=CacheTableType.metadata,
-        columns_factory="biodata_cache.cache_table_helpers.record_consistency.record_consistency_flags_v2_columns",
-        sync_job="record_consistency_v2",
+        columns_factory="biodata_cache.cache_table_helpers.record_consistency.record_consistency_checks_columns",
+        sync_job="record_consistency_checks",
     ),
     TableSpec(
         key="core",

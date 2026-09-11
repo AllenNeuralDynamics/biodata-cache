@@ -1,4 +1,4 @@
-"""V2 record-consistency cache table."""
+"""Record-consistency checks cache table."""
 
 import json
 import logging
@@ -11,29 +11,23 @@ import pandas as pd
 import biodata_cache.registry as registry
 from biodata_cache.models import Column
 from biodata_cache.record_consistency import (
-    CHECK_CLASS,
     CHECK_KEY,
     DOCDB_VERSION,
+    DuplicateNameCheckSummary,
     evaluate_duplicate_names_v2,
 )
 from biodata_cache.utils import CacheLogMessage, setup_logging
 
-TABLE_NAME = "record_consistency_flags_v2"
+TABLE_NAME = "record_consistency_checks"
 MANIFEST_KEY = f"{TABLE_NAME}.manifest.json"
 SOURCE_COLUMNS = ("_id", "name", "location")
 RESULT_COLUMNS = (
     "check_key",
-    "check_class",
-    "docdb_version",
+    "status",
     "docdb_id",
+    "docdb_version",
     "name",
     "location",
-    "status",
-    "duplicate_group_count",
-    "peer_docdb_ids",
-    "peer_names",
-    "reason",
-    "error_type",
 )
 TABLE_COLUMNS = ("run_id", "checked_at", *RESULT_COLUMNS)
 
@@ -61,19 +55,37 @@ def _asset_basics_records(df: pd.DataFrame) -> list[dict[str, Any]]:
     ]
 
 
-@registry.register_table(registry.NAMES["record_consistency_v2"])
-def record_consistency_flags_v2(force_update: bool = False) -> pd.DataFrame:
-    """Build v2 duplicate-name flags from the cached ``asset_basics`` table.
+def _duplicate_name_v2_manifest(summary: DuplicateNameCheckSummary) -> dict[str, Any]:
+    """Build manifest accounting for the v2 duplicate-name check."""
+    return {
+        "check_key": CHECK_KEY,
+        "docdb_version": DOCDB_VERSION,
+        "candidate_count": summary.candidate_count,
+        "processed_count": summary.processed_count,
+        "skipped_count": summary.skipped_count,
+        "parse_failure_count": summary.parse_failure_count,
+        "passed_count": summary.processed_count - summary.failed_count,
+        "failed_count": summary.failed_count,
+        "unknown_count": 0,
+        "duplicate_group_count": summary.duplicate_group_count,
+    }
 
-    The builder never contacts DocDB, S3, or Code Ocean. ``asset_basics`` must
-    already have been built by the prerequisite sync job. A failed or malformed
-    source sweep raises before writing data, preserving the previous result.
+
+@registry.register_table(registry.NAMES["record_consistency_checks"])
+def record_consistency_checks(force_update: bool = False) -> pd.DataFrame:
+    """Build all record-consistency checks from cached prerequisite tables.
+
+    The first registered check detects exact duplicate names in v2 DocDB records.
+    The builder never contacts DocDB, S3, or Code Ocean directly. ``asset_basics``
+    must already have been built by the prerequisite sync job. A failed or
+    malformed source sweep raises before writing data, preserving the previous
+    result.
 
     Args:
         force_update: If True, rebuild from the current ``asset_basics`` cache.
 
     Returns:
-        The complete flags table, including passing singleton rows.
+        Complete check results, including passing singleton rows.
 
     Raises:
         ValueError: If the prerequisite cache is missing, has an invalid schema,
@@ -92,7 +104,7 @@ def record_consistency_flags_v2(force_update: bool = False) -> pd.DataFrame:
         CacheLogMessage(
             backend=registry.BACKEND.__class__.__name__,
             table=TABLE_NAME,
-            message="Updating v2 duplicate-name flags from asset_basics",
+            message="Updating record-consistency checks from asset_basics",
         ).to_json()
     )
     rows, summary = evaluate_duplicate_names_v2(_asset_basics_records(source))
@@ -107,20 +119,17 @@ def record_consistency_flags_v2(force_update: bool = False) -> pd.DataFrame:
     result.insert(0, "checked_at", checked_at)
     result.insert(0, "run_id", run_id)
 
+    check_manifests = [_duplicate_name_v2_manifest(summary)]
     manifest = {
         "complete": True,
         "run_id": run_id,
         "checked_at": checked_at,
         "table": TABLE_NAME,
-        "check_key": CHECK_KEY,
-        "check_class": CHECK_CLASS,
-        "docdb_version": DOCDB_VERSION,
-        "candidate_count": summary.candidate_count,
-        "processed_count": summary.processed_count,
-        "skipped_count": summary.skipped_count,
-        "parse_failure_count": summary.parse_failure_count,
-        "failed_count": summary.failed_count,
-        "duplicate_group_count": summary.duplicate_group_count,
+        "check_count": len(check_manifests),
+        "checks": check_manifests,
+        "passed_count": sum(check["passed_count"] for check in check_manifests),
+        "failed_count": sum(check["failed_count"] for check in check_manifests),
+        "unknown_count": sum(check["unknown_count"] for check in check_manifests),
         "row_count": len(result),
     }
 
@@ -131,21 +140,15 @@ def record_consistency_flags_v2(force_update: bool = False) -> pd.DataFrame:
     return result
 
 
-def record_consistency_flags_v2_columns() -> list[Column]:
-    """Return registry metadata for the v2 record-consistency table."""
+def record_consistency_checks_columns() -> list[Column]:
+    """Return registry metadata for the record-consistency checks table."""
     return [
         Column(name="run_id", description="Unique identifier for this consistency-check run"),
         Column(name="checked_at", description="UTC timestamp when this row was evaluated"),
         Column(name="check_key", description="Stable check identifier"),
-        Column(name="check_class", description="Consistency taxonomy class"),
-        Column(name="docdb_version", description="DocDB metadata version checked"),
+        Column(name="status", description="Check result: pass, fail, or unknown"),
         Column(name="docdb_id", description="DocDB record ID"),
+        Column(name="docdb_version", description="DocDB metadata version checked"),
         Column(name="name", description="Exact DocDB asset name used for duplicate grouping"),
         Column(name="location", description="S3 location from asset_basics, when available"),
-        Column(name="status", description="Check result: pass or fail"),
-        Column(name="duplicate_group_count", description="Number of v2 records sharing this exact name"),
-        Column(name="peer_docdb_ids", description="Other v2 DocDB IDs in the duplicate-name group"),
-        Column(name="peer_names", description="Names corresponding to peer_docdb_ids"),
-        Column(name="reason", description="Human-readable reason for a failed check"),
-        Column(name="error_type", description="Optional classification error type"),
     ]

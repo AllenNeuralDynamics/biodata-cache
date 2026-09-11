@@ -21,7 +21,7 @@ def test_fragments_round_trip_through_memory_backend():
     # merged registry is sorted by name for stable ordering
     assert names == sorted(names)
     assert "asset_basics" in names
-    assert "record_consistency_flags_v2" in names
+    assert "record_consistency_checks" in names
     assert "quality_control" in names
 
 
