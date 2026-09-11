@@ -57,6 +57,25 @@ def _asset_basics_records(df: pd.DataFrame) -> list[dict[str, Any]]:
     ]
 
 
+def _duplicate_name_inputs(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Project cache records into the duplicate-name predicate contract."""
+    return [{"_id": record["_id"], "name": record["name"]} for record in records]
+
+
+def _add_asset_basics_context(
+    rows: list[dict[str, Any]],
+    records: list[dict[str, Any]],
+) -> None:
+    """Add display context without coupling the pure predicate to cache fields."""
+    locations = {
+        record["_id"]: record["location"]
+        for record in records
+        if isinstance(record["_id"], str)
+    }
+    for row in rows:
+        row["location"] = locations.get(row["docdb_id"])
+
+
 def _duplicate_name_v2_manifest(summary: DuplicateNameCheckSummary) -> dict[str, Any]:
     """Build manifest accounting for the v2 duplicate-name check."""
     return {
@@ -111,7 +130,9 @@ def record_consistency_checks(force_update: bool = False) -> pd.DataFrame:
             message="Updating record-consistency checks from asset_basics",
         ).to_json()
     )
-    rows, summary = evaluate_duplicate_names_v2(_asset_basics_records(source))
+    source_records = _asset_basics_records(source)
+    rows, summary = evaluate_duplicate_names_v2(_duplicate_name_inputs(source_records))
+    _add_asset_basics_context(rows, source_records)
     if not summary.is_complete:
         raise ValueError(
             f"Cannot publish incomplete v2 duplicate-name flags: {summary.parse_failure_count} parse failures"

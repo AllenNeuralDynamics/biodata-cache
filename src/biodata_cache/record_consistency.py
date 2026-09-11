@@ -7,7 +7,7 @@ from typing import Any
 
 CHECK_CLASS = "duplication"
 CHECK_KEY = "docdb_duplicate_name_v2"
-CHECK_DESCRIPTION = 'Flags each record in DocDB v2 whose exact "name" key is identical to another v2 record.'
+CHECK_DESCRIPTION = 'Fails each record in DocDB v2 whose exact "name" key is identical to another v2 record.'
 CHECK_IMPLEMENTATION_URL = (
     "https://github.com/AllenNeuralDynamics/biodata-cache/blob/5b10df0/"
     "src/biodata_cache/record_consistency.py#L39"
