@@ -106,10 +106,9 @@ def duckdb_query(query: str, parameters: Sequence[Any] | None = None) -> "pd.Dat
             msg = str(exc)
             if "503" in msg or "SlowDown" in msg or "Service Unavailable" in msg:
                 if attempt < _S3_RETRY_ATTEMPTS - 1:
-                    delay = _S3_RETRY_BACKOFF * (2 ** attempt)
+                    delay = _S3_RETRY_BACKOFF * (2**attempt)
                     logging.warning(
-                        f"S3 rate limit, retrying in {delay:.1f}s "
-                        f"(attempt {attempt + 1}/{_S3_RETRY_ATTEMPTS})"
+                        f"S3 rate limit, retrying in {delay:.1f}s (attempt {attempt + 1}/{_S3_RETRY_ATTEMPTS})"
                     )
                     time.sleep(delay)
                     continue

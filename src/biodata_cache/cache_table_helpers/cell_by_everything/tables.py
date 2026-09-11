@@ -149,9 +149,7 @@ def _properties_partition_exists(asset_name: str) -> bool:
     return registry.BACKEND.partition_exists(f"{registry.NAMES['cell_properties']}/{asset_name}")
 
 
-def _iter_source_frames(
-    source: CellSource, df_basics: pd.DataFrame, force_rewrite: bool
-) -> Iterator[AssetWork]:
+def _iter_source_frames(source: CellSource, df_basics: pd.DataFrame, force_rewrite: bool) -> Iterator[AssetWork]:
     """Yield one :class:`AssetWork` per asset this source supplies.
 
     Both kinds of read are issued concurrently per batch: the source rows for
@@ -615,12 +613,21 @@ def cell_index_columns() -> list[Column]:
         Column(name="cell_key", description="Stable primary key for the cell; joins cell_properties and cell_genes"),
         Column(name="asset_name", description="Data asset the cell was read from; joins asset_basics"),
         Column(name="subject_id", description="Subject the cell was recorded in"),
-        Column(name="session_key", description="Acquisition identifier '<subject_id>_<YYYY-MM-DD>'; shared by every reprocessing of one session"),
+        Column(
+            name="session_key",
+            description="Acquisition identifier '<subject_id>_<YYYY-MM-DD>'; shared by every reprocessing of one session",
+        ),
         Column(name="project_name", description="Project the source asset belongs to"),
         Column(name="modality", description="Recording modality of the cell ('ecephys' or 'ophys')"),
         Column(name="source", description="Cache table the cell was projected from (e.g. 'ecephys_units', 'pophys')"),
-        Column(name="container", description="Physical channel the cell was recorded through: probe name for ecephys, imaging plane name for ophys"),
-        Column(name="cell_ref", description="The source table's own identifier for the cell (unit id or ROI id), for going back to the source NWB"),
+        Column(
+            name="container",
+            description="Physical channel the cell was recorded through: probe name for ecephys, imaging plane name for ophys",
+        ),
+        Column(
+            name="cell_ref",
+            description="The source table's own identifier for the cell (unit id or ROI id), for going back to the source NWB",
+        ),
     ]
 
 
@@ -628,9 +635,18 @@ def cell_properties_columns() -> list[Column]:
     """Return cell_properties cache table column definitions."""
     return [
         Column(name="cell_key", description="Stable cell key; joins cell_index and cell_genes"),
-        Column(name="source", description="CellSource that wrote this partition; asset enumerations overlap, so this records which source owns the asset"),
-        Column(name="container", description="Probe name (ecephys) or imaging plane name (ophys); duplicated from cell_index so a partition is self-describing"),
-        Column(name="cell_ref", description="The source table's own unit/ROI identifier; duplicated from cell_index so a partition is self-describing"),
+        Column(
+            name="source",
+            description="CellSource that wrote this partition; asset enumerations overlap, so this records which source owns the asset",
+        ),
+        Column(
+            name="container",
+            description="Probe name (ecephys) or imaging plane name (ophys); duplicated from cell_index so a partition is self-describing",
+        ),
+        Column(
+            name="cell_ref",
+            description="The source table's own unit/ROI identifier; duplicated from cell_index so a partition is self-describing",
+        ),
         *(Column(name=name, description=description) for name, (_dtype, description) in PROPERTY_COLUMNS.items()),
     ]
 

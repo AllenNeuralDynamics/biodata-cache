@@ -54,11 +54,7 @@ def _spike_chunk_objects(client, bucket: str, prefix: str) -> list[tuple[str, in
     paginator = client.get_paginator("list_objects_v2")
     objects: list[tuple[str, int]] = []
     for page in paginator.paginate(Bucket=bucket, Prefix=array_prefix):
-        objects.extend(
-            (obj["Key"], int(obj["Size"]))
-            for obj in page.get("Contents", [])
-            if obj["Key"] != array_prefix
-        )
+        objects.extend((obj["Key"], int(obj["Size"])) for obj in page.get("Contents", []) if obj["Key"] != array_prefix)
     return sorted(objects)
 
 

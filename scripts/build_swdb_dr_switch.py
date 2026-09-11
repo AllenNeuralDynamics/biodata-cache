@@ -28,8 +28,7 @@ def main():
     df = TABLE_REGISTRY[name](force_update=True)
     publish_registry_fragment(name)
     logging.info(
-        f"Built {name}: {len(df)} rows, {df['asset_name'].nunique()} assets, "
-        f"{df['unit_id'].nunique()} unique unit_ids"
+        f"Built {name}: {len(df)} rows, {df['asset_name'].nunique()} assets, {df['unit_id'].nunique()} unique unit_ids"
     )
 
     # Written as a byproduct of the same builder call above; just publish its

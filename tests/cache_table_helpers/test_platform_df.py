@@ -297,4 +297,3 @@ def test_registry_names_present():
     assert NAMES["df_sessions"] == "platform_dynamic_foraging_sessions"
     assert NAMES["df_trials"] == "platform_dynamic_foraging_trials"
     assert NAMES["df_events"] == "platform_dynamic_foraging_events"
-

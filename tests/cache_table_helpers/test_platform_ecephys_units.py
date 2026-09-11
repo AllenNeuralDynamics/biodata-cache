@@ -238,6 +238,7 @@ def test_extract_units_without_waveform_inputs():
     assert "waveform" not in df.columns
     assert len(df) == 1
 
+
 def test_extract_units_empty_returns_empty():
     assert _extract_units(_FakeUnits({}), [], "exp").empty
 

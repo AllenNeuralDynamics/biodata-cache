@@ -84,6 +84,7 @@ def _load_asset_basics(force_update: bool = False) -> pd.DataFrame:
             ]
         )
         from aind_data_access_api.document_db import MetadataDbClient
+
         client = MetadataDbClient(
             host=registry.API_GATEWAY_HOST,
             version="v2",

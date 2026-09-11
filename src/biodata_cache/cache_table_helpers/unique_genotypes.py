@@ -39,6 +39,7 @@ def unique_genotypes(force_update: bool = False) -> list[str]:
             ).to_json()
         )
         from aind_data_access_api.document_db import MetadataDbClient
+
         client = MetadataDbClient(
             host=registry.API_GATEWAY_HOST,
             version="v2",

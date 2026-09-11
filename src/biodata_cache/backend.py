@@ -384,8 +384,10 @@ class S3Backend(Backend):
         if order_by is not None:
             _validated_identifier(order_by, available_columns)
 
-        select_sql = "*" if requested_columns is None else ", ".join(
-            _validated_identifier(column, available_columns) for column in requested_columns
+        select_sql = (
+            "*"
+            if requested_columns is None
+            else ", ".join(_validated_identifier(column, available_columns) for column in requested_columns)
         )
         where_clauses = []
         parameters: list[object] = []
@@ -398,15 +400,11 @@ class S3Backend(Backend):
                     where_clauses.append(f"{column} = ?")
                     parameters.append(predicate.value)
             elif predicate.operator == "contains":
-                where_clauses.append(
-                    f"contains(lower(CAST({column} AS VARCHAR)), lower(CAST(? AS VARCHAR)))"
-                )
+                where_clauses.append(f"contains(lower(CAST({column} AS VARCHAR)), lower(CAST(? AS VARCHAR)))")
                 parameters.append(str(predicate.value))
             else:
                 comparison = "<" if predicate.operator == "lt" else ">="
-                where_clauses.append(
-                    f"TRY_CAST({column} AS TIMESTAMPTZ) {comparison} TRY_CAST(? AS TIMESTAMPTZ)"
-                )
+                where_clauses.append(f"TRY_CAST({column} AS TIMESTAMPTZ) {comparison} TRY_CAST(? AS TIMESTAMPTZ)")
                 parameters.append(predicate.value)
 
         source_sql = f"read_parquet('{self._sql_string_literal(self._parquet_uri(table_name))}')"

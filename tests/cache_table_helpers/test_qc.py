@@ -59,20 +59,34 @@ def _sources(*pairs):
 
 
 def test_build_qc_rows_selects_latest_terminal_chain_per_modality_and_tracks_downstream_versions():
-    raw = _asset("raw", [_metric("raw metric", stage="Raw", modality="behavior", value={"x": 1})], data_level="raw", created="2026-01-01")
+    raw = _asset(
+        "raw",
+        [_metric("raw metric", stage="Raw", modality="behavior", value={"x": 1})],
+        data_level="raw",
+        created="2026-01-01",
+    )
     old_behavior = _asset(
         "behavior-old",
-        [_metric("raw metric", stage="Raw", modality="behavior", value={"x": 1}), _metric("behavior metric", value="old")],
+        [
+            _metric("raw metric", stage="Raw", modality="behavior", value={"x": 1}),
+            _metric("behavior metric", value="old"),
+        ],
         created="2026-01-02",
     )
     new_behavior = _asset(
         "behavior-new",
-        [_metric("raw metric", stage="Raw", modality="behavior", value={"x": 1}), _metric("behavior metric", value="new")],
+        [
+            _metric("raw metric", stage="Raw", modality="behavior", value={"x": 1}),
+            _metric("behavior metric", value="new"),
+        ],
         created="2026-01-03",
     )
     pophys = _asset(
         "pophys",
-        [_metric("raw metric", stage="Raw", modality="behavior", value={"x": 1}), _metric("pophys metric", modality="pophys", reference="figure.png")],
+        [
+            _metric("raw metric", stage="Raw", modality="behavior", value={"x": 1}),
+            _metric("pophys metric", modality="pophys", reference="figure.png"),
+        ],
         modalities=("pophys",),
         created="2026-01-02",
     )
@@ -100,8 +114,14 @@ def test_build_qc_rows_selects_latest_terminal_chain_per_modality_and_tracks_dow
 
 def test_build_qc_rows_keeps_earliest_metric_in_a_downstream_chain():
     raw = _asset("raw", [_metric("shared", stage="Raw", value="origin")], data_level="raw", created="2026-01-01")
-    middle = _asset("middle", [_metric("shared", stage="Raw", value="origin"), _metric("middle-only", value=1)], created="2026-01-02")
-    leaf = _asset("leaf", [_metric("shared", stage="Raw", value="origin"), _metric("middle-only", value=1)], created="2026-01-03")
+    middle = _asset(
+        "middle",
+        [_metric("shared", stage="Raw", value="origin"), _metric("middle-only", value=1)],
+        created="2026-01-02",
+    )
+    leaf = _asset(
+        "leaf", [_metric("shared", stage="Raw", value="origin"), _metric("middle-only", value=1)], created="2026-01-03"
+    )
     rows = build_qc_rows(
         [raw, middle, leaf],
         _basics(raw, middle, leaf),
@@ -121,7 +141,9 @@ def test_build_qc_rows_keeps_earliest_metric_in_a_downstream_chain():
 
 def test_qc_rows_preserve_full_metric_json_for_browser_rendering():
     raw = _asset("raw", [_metric("complex", value={"nested": [1, 2]}, tags={"suite": "a"})], data_level="raw")
-    rows = build_qc_rows([raw], _basics(raw), pd.DataFrame(columns=["name", "source_data", "pipeline_name", "processing_time"]))
+    rows = build_qc_rows(
+        [raw], _basics(raw), pd.DataFrame(columns=["name", "source_data", "pipeline_name", "processing_time"])
+    )
     row = rows[0]
     assert row["metric_json"]
     assert row["tags"] == '{"suite": "a"}'

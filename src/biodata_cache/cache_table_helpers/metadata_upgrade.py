@@ -87,6 +87,7 @@ def metadata_upgrade(force_update: bool = False) -> pd.DataFrame:
 
         if not failed.empty:
             from aind_data_access_api.document_db import MetadataDbClient
+
             v1_client = MetadataDbClient(
                 host=registry.API_GATEWAY_HOST,
                 version="v1",

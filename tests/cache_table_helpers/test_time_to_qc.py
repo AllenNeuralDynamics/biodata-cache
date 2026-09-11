@@ -91,9 +91,7 @@ def test_has_pending_status_empty():
 
 
 def test_get_last_metric_timestamp_single_metric():
-    metrics = [
-        {"status_history": [{"status": "Pass", "timestamp": "2025-04-23T00:38:48+00:00"}]}
-    ]
+    metrics = [{"status_history": [{"status": "Pass", "timestamp": "2025-04-23T00:38:48+00:00"}]}]
     assert _get_last_metric_timestamp(metrics) == "2025-04-23T00:38:48+00:00"
 
 
@@ -209,18 +207,10 @@ def test_time_to_qc_force_update_drops_no_qc(mock_client_class, mock_asset_basic
         {"name": "asset_a", "processing": {"data_processes": []}, "quality_control": None},
         {
             "name": "asset_b",
-            "processing": {
-                "data_processes": [{"end_date_time": "2025-04-22T20:50:47"}]
-            },
+            "processing": {"data_processes": [{"end_date_time": "2025-04-22T20:50:47"}]},
             "quality_control": {
                 "status": {"pophys": "Pass"},
-                "metrics": [
-                    {
-                        "status_history": [
-                            {"status": "Pass", "timestamp": "2025-04-23T00:38:48+00:00"}
-                        ]
-                    }
-                ],
+                "metrics": [{"status_history": [{"status": "Pass", "timestamp": "2025-04-23T00:38:48+00:00"}]}],
             },
         },
     ]
@@ -236,9 +226,7 @@ def test_time_to_qc_force_update_drops_no_qc(mock_client_class, mock_asset_basic
 @patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_time_to_qc_pending_qc_uses_now(mock_client_class, mock_asset_basics, mock_datetime):
     mock_datetime.now.return_value.isoformat.return_value = "2026-06-11T00:00:00+00:00"
-    mock_asset_basics.return_value = pd.DataFrame(
-        {"name": ["asset_c"], "data_level": ["derived"]}
-    )
+    mock_asset_basics.return_value = pd.DataFrame({"name": ["asset_c"], "data_level": ["derived"]})
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
     mock_client.retrieve_docdb_records.return_value = [
@@ -247,13 +235,7 @@ def test_time_to_qc_pending_qc_uses_now(mock_client_class, mock_asset_basics, mo
             "processing": {"data_processes": []},
             "quality_control": {
                 "status": {"pophys": "Pending"},
-                "metrics": [
-                    {
-                        "status_history": [
-                            {"status": "Pending", "timestamp": "2025-04-23T00:38:48+00:00"}
-                        ]
-                    }
-                ],
+                "metrics": [{"status_history": [{"status": "Pending", "timestamp": "2025-04-23T00:38:48+00:00"}]}],
             },
         }
     ]
@@ -266,9 +248,7 @@ def test_time_to_qc_pending_qc_uses_now(mock_client_class, mock_asset_basics, mo
 @patch("biodata_cache.cache_table_helpers.time_to_qc.asset_basics")
 @patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_time_to_qc_no_derived_assets(mock_client_class, mock_asset_basics):
-    mock_asset_basics.return_value = pd.DataFrame(
-        {"name": ["asset_raw"], "data_level": ["raw"]}
-    )
+    mock_asset_basics.return_value = pd.DataFrame({"name": ["asset_raw"], "data_level": ["raw"]})
     df = time_to_qc(force_update=True)
     assert df.empty
     mock_client_class.assert_not_called()
@@ -277,9 +257,7 @@ def test_time_to_qc_no_derived_assets(mock_client_class, mock_asset_basics):
 @patch("biodata_cache.cache_table_helpers.time_to_qc.asset_basics")
 @patch("aind_data_access_api.document_db.MetadataDbClient")
 def test_time_to_qc_cached_after_fetch(mock_client_class, mock_asset_basics):
-    mock_asset_basics.return_value = pd.DataFrame(
-        {"name": ["asset_d"], "data_level": ["derived"]}
-    )
+    mock_asset_basics.return_value = pd.DataFrame({"name": ["asset_d"], "data_level": ["derived"]})
     mock_client = MagicMock()
     mock_client_class.return_value = mock_client
     mock_client.retrieve_docdb_records.return_value = [
@@ -288,9 +266,7 @@ def test_time_to_qc_cached_after_fetch(mock_client_class, mock_asset_basics):
             "processing": {"data_processes": [{"end_date_time": "2025-04-22T20:50:47"}]},
             "quality_control": {
                 "status": {"pophys": "Pass"},
-                "metrics": [
-                    {"status_history": [{"status": "Pass", "timestamp": "2025-04-23T00:38:48+00:00"}]}
-                ],
+                "metrics": [{"status_history": [{"status": "Pass", "timestamp": "2025-04-23T00:38:48+00:00"}]}],
             },
         }
     ]

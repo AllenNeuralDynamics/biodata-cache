@@ -279,9 +279,7 @@ def platform_fib_traces(
 
     df = registry.BACKEND.read(cache_key)
     if df.empty:
-        raise ValueError(
-            f"Cache is empty for asset {asset_name}. Use force_update=True to fetch data from S3."
-        )
+        raise ValueError(f"Cache is empty for asset {asset_name}. Use force_update=True to fetch data from S3.")
 
     return df
 

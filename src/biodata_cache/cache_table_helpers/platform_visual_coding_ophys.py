@@ -222,20 +222,22 @@ def _extract_rois(root, asset_name: str) -> list[dict]:
             continue
         contour = [[x + x_origin, y + y_origin] for x, y in contour]
         ys, xs = np.nonzero(mask)
-        rows.append({
-            "asset_name": asset_name,
-            "plane": "ophys",
-            "roi_id": int(roi_id),
-            "global_roi_id": int(global_ids[index]),
-            "structure": structure,
-            "depth_um": depth_um,
-            "imaging_rate": float(imaging_rate) if imaging_rate is not None else None,
-            "grid_spacing_um": json.dumps(list(grid_spacing)) if grid_spacing is not None else None,
-            "centroid_x": float((xs + x_origin).mean()),
-            "centroid_y": float((ys + y_origin).mean()),
-            "area_px": int(mask.sum()),
-            "contour": json.dumps(contour),
-        })
+        rows.append(
+            {
+                "asset_name": asset_name,
+                "plane": "ophys",
+                "roi_id": int(roi_id),
+                "global_roi_id": int(global_ids[index]),
+                "structure": structure,
+                "depth_um": depth_um,
+                "imaging_rate": float(imaging_rate) if imaging_rate is not None else None,
+                "grid_spacing_um": json.dumps(list(grid_spacing)) if grid_spacing is not None else None,
+                "centroid_x": float((xs + x_origin).mean()),
+                "centroid_y": float((ys + y_origin).mean()),
+                "area_px": int(mask.sum()),
+                "contour": json.dumps(contour),
+            }
+        )
     return rows
 
 
@@ -286,7 +288,9 @@ def platform_visual_coding_ophys(
         return _fetch_asset(asset_name, location=location)
     frame = registry.BACKEND.read(cache_key)
     if frame.empty:
-        raise ValueError(f"Cache is empty for Visual Coding Ophys asset {asset_name}. Use force_update=True to fetch data.")
+        raise ValueError(
+            f"Cache is empty for Visual Coding Ophys asset {asset_name}. Use force_update=True to fetch data."
+        )
     return frame
 
 

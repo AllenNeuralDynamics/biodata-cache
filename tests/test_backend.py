@@ -18,7 +18,6 @@ def _not_found_error() -> ClientError:
     return ClientError({"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject")
 
 
-
 # --- Backend abstract class ---
 
 
@@ -310,9 +309,9 @@ def test_s3_filtered_read_projects_columns_and_binds_literal_filter(mock_boto3_c
 def test_s3_filtered_read_reports_total_with_date_and_project_predicates(mock_boto3_client, mock_duckdb_query):
     mock_s3 = MagicMock()
     mock_s3.head_object.return_value = {"ContentLength": 1}
-    mock_s3.get_object.return_value = {"Body": BytesIO(
-        b'{"columns": ["name", "project_name", "acquisition_start_time"]}'
-    )}
+    mock_s3.get_object.return_value = {
+        "Body": BytesIO(b'{"columns": ["name", "project_name", "acquisition_start_time"]}')
+    }
     mock_boto3_client.return_value = mock_s3
     page = pd.DataFrame({"name": ["asset[1]"], "project_name": ["Project"]})
     mock_duckdb_query.side_effect = [
@@ -469,9 +468,7 @@ def test_s3_read_partitioned_read_error_raises(mock_boto3_client, mock_duckdb_qu
 @patch("biodata_cache.backend.boto3.client")
 def test_s3_read_non_404_head_error_raises(mock_boto3_client, mock_duckdb_query):
     mock_s3 = MagicMock()
-    mock_s3.head_object.side_effect = ClientError(
-        {"Error": {"Code": "500", "Message": "Internal Error"}}, "HeadObject"
-    )
+    mock_s3.head_object.side_effect = ClientError({"Error": {"Code": "500", "Message": "Internal Error"}}, "HeadObject")
     mock_boto3_client.return_value = mock_s3
     mock_duckdb_query.side_effect = Exception("read failed")
     with pytest.raises(ClientError):
