@@ -13,9 +13,9 @@ from biodata_cache.record_consistency import (
 def test_duplicate_name_v2_flags_every_group_member_with_complete_peers():
     """Every member of a duplicate group fails and lists all other IDs."""
     records = [
-        {"_id": "v2-b", "name": "duplicate", "location": "s3://bucket/b"},
-        {"_id": "v2-c", "name": "duplicate", "location": "s3://bucket/c"},
-        {"_id": "v2-a", "name": "duplicate", "location": "s3://bucket/a"},
+        {"_id": "v2-b", "name": "duplicate"},
+        {"_id": "v2-c", "name": "duplicate"},
+        {"_id": "v2-a", "name": "duplicate"},
     ]
 
     rows, summary = evaluate_duplicate_names_v2(records)
@@ -28,6 +28,7 @@ def test_duplicate_name_v2_flags_every_group_member_with_complete_peers():
     assert rows[0]["peer_docdb_ids"] == ["v2-b", "v2-c"]
     assert rows[1]["peer_docdb_ids"] == ["v2-a", "v2-c"]
     assert rows[2]["peer_docdb_ids"] == ["v2-a", "v2-b"]
+    assert all("location" not in row for row in rows)
     assert summary.candidate_count == 3
     assert summary.processed_count == 3
     assert summary.failed_count == 3

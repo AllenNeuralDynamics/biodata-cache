@@ -53,8 +53,7 @@ def evaluate_duplicate_names_v2(
 
     Args:
         records: Iterable of projected DocDB records containing string ``_id``
-            and ``name`` fields. An optional string ``location`` is preserved for
-            later display but does not affect this check.
+            and ``name`` fields.
 
     Returns:
         A deterministic list of result rows and the input/result summary.
@@ -65,7 +64,7 @@ def evaluate_duplicate_names_v2(
             interpreted as duplicate names.
     """
     candidates = list(records)
-    valid_records: list[tuple[str, str, str | None]] = []
+    valid_records: list[tuple[str, str]] = []
     seen_ids: set[str] = set()
     skipped_count = 0
     parse_failure_count = 0
@@ -91,10 +90,9 @@ def evaluate_duplicate_names_v2(
             parse_failure_count += 1
             continue
 
-        location = record.get("location")
-        valid_records.append((docdb_id, name, location if isinstance(location, str) else None))
+        valid_records.append((docdb_id, name))
 
-    records_by_name: dict[str, list[tuple[str, str, str | None]]] = defaultdict(list)
+    records_by_name: dict[str, list[tuple[str, str]]] = defaultdict(list)
     for record in valid_records:
         records_by_name[record[1]].append(record)
 
@@ -106,7 +104,7 @@ def evaluate_duplicate_names_v2(
         if group_count > 1:
             duplicate_group_count += 1
 
-        for docdb_id, _, location in group:
+        for docdb_id, _ in group:
             peers = [peer for peer in group if peer[0] != docdb_id]
             failed = bool(peers)
             result_rows.append(
@@ -116,7 +114,6 @@ def evaluate_duplicate_names_v2(
                     "docdb_version": DOCDB_VERSION,
                     "docdb_id": docdb_id,
                     "name": name,
-                    "location": location,
                     "status": "fail" if failed else "pass",
                     "duplicate_group_count": group_count,
                     "peer_docdb_ids": [peer[0] for peer in peers],
