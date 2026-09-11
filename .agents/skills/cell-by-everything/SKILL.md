@@ -139,8 +139,8 @@ be one `CellSource`.
    default, so a plain re-run will *not* backfill your new column into assets that
    are already written — they will silently keep the old schema.
 4. **Prefer a canonical name over a pipeline name.** `mean_rate` rather than
-   `firing_rate`, so the ophys and ecephys answers land in one column a caller
-   can group by. Map pipeline-specific names to it via the candidate tuple.
+   `firing_rate`, so the ophys and ecephys answers land in one column a caller can
+   group by. Map pipeline-specific names to it via the candidate tuple.
 5. Add an assertion to `test_properties_are_sparse_per_modality` or a new test
    that the column is filled for the sources that have it and NULL elsewhere.
 
