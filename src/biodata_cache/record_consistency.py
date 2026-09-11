@@ -1,7 +1,7 @@
 """Pure DocDB v2 record-consistency checks."""
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -14,6 +14,9 @@ CHECK_IMPLEMENTATION_URL = (
 )
 DOCDB_VERSION = "v2"
 PROJECTION = {"_id": 1, "name": 1}
+V1_NAME_MISSING_V2_CHECK_KEY = "docdb_v1_name_missing_in_v2"
+V1_NAME_MISSING_V2_DOCDB_VERSION = "v1"
+V1_NAME_MISSING_V2_PROJECTION = {"_id": 1, "name": 1}
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +41,30 @@ class DuplicateNameCheckSummary:
         if accounted != self.candidate_count:
             raise ValueError(
                 f"Duplicate-name check accounting mismatch: candidate={self.candidate_count}, accounted={accounted}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class V1NameMissingV2CheckSummary:
+    """Counts and invariants produced by the v1-name coverage check."""
+
+    candidate_count: int
+    processed_count: int
+    skipped_count: int
+    parse_failure_count: int
+    failed_count: int
+
+    @property
+    def is_complete(self) -> bool:
+        """Return whether every candidate was validly classified or intentionally skipped."""
+        return self.parse_failure_count == 0
+
+    def validate(self) -> None:
+        """Raise if the summary's accounting invariant is violated."""
+        accounted = self.processed_count + self.skipped_count + self.parse_failure_count
+        if accounted != self.candidate_count:
+            raise ValueError(
+                f"V1-name coverage check accounting mismatch: candidate={self.candidate_count}, accounted={accounted}"
             )
 
 
@@ -135,6 +162,82 @@ def evaluate_duplicate_names_v2(
         parse_failure_count=parse_failure_count,
         failed_count=sum(row["status"] == "fail" for row in result_rows),
         duplicate_group_count=duplicate_group_count,
+    )
+    summary.validate()
+    return result_rows, summary
+
+
+def evaluate_v1_names_missing_v2(
+    v1_records: Iterable[Mapping[str, Any]],
+    v2_names: Collection[str],
+) -> tuple[list[dict[str, Any]], V1NameMissingV2CheckSummary]:
+    """Evaluate whether each DocDB v1 name has at least one exact v2 match.
+
+    A valid v1 record passes when one or more v2 records have the same exact,
+    non-empty ``name`` and fails when no v2 name matches. Missing or empty v1
+    names are skipped. Malformed records are counted as parse failures.
+
+    Args:
+        v1_records: Complete projected DocDB v1 population containing ``_id``
+            and ``name`` fields.
+        v2_names: Validated set-like collection of exact DocDB v2 names.
+
+    Returns:
+        Deterministically ordered result rows and source-accounting summary.
+
+    Raises:
+        ValueError: If a reference v2 name is invalid or a v1 DocDB ID appears
+            more than once.
+    """
+    invalid_v2_names = [name for name in v2_names if not isinstance(name, str) or not name]
+    if invalid_v2_names:
+        raise ValueError("v2_names must contain only non-empty strings")
+    reference_names = set(v2_names)
+
+    candidates = list(v1_records)
+    valid_records: list[tuple[str, str]] = []
+    seen_ids: set[str] = set()
+    skipped_count = 0
+    parse_failure_count = 0
+
+    for index, record in enumerate(candidates):
+        if not isinstance(record, Mapping):
+            parse_failure_count += 1
+            continue
+
+        docdb_id = record.get("_id")
+        if not isinstance(docdb_id, str) or not docdb_id:
+            parse_failure_count += 1
+            continue
+        if docdb_id in seen_ids:
+            raise ValueError(f"Duplicate DocDB ID in v1 input at record index {index}: {docdb_id!r}")
+        seen_ids.add(docdb_id)
+
+        name = record.get("name")
+        if name is None or name == "":
+            skipped_count += 1
+            continue
+        if not isinstance(name, str):
+            parse_failure_count += 1
+            continue
+        valid_records.append((docdb_id, name))
+
+    result_rows = [
+        {
+            "check_key": V1_NAME_MISSING_V2_CHECK_KEY,
+            "docdb_version": V1_NAME_MISSING_V2_DOCDB_VERSION,
+            "docdb_id": docdb_id,
+            "name": name,
+            "status": "pass" if name in reference_names else "fail",
+        }
+        for docdb_id, name in sorted(valid_records, key=lambda record: (record[1], record[0]))
+    ]
+    summary = V1NameMissingV2CheckSummary(
+        candidate_count=len(candidates),
+        processed_count=len(valid_records),
+        skipped_count=skipped_count,
+        parse_failure_count=parse_failure_count,
+        failed_count=sum(row["status"] == "fail" for row in result_rows),
     )
     summary.validate()
     return result_rows, summary

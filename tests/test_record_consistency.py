@@ -6,7 +6,11 @@ from biodata_cache.record_consistency import (
     CHECK_KEY,
     DOCDB_VERSION,
     PROJECTION,
+    V1_NAME_MISSING_V2_CHECK_KEY,
+    V1_NAME_MISSING_V2_DOCDB_VERSION,
+    V1_NAME_MISSING_V2_PROJECTION,
     evaluate_duplicate_names_v2,
+    evaluate_v1_names_missing_v2,
 )
 
 
@@ -126,3 +130,93 @@ def test_duplicate_docdb_ids_fail_input_instead_of_becoming_peers():
 def test_projection_is_explicitly_minimal():
     """The first check needs only the DocDB identity and name fields."""
     assert PROJECTION == {"_id": 1, "name": 1}
+
+
+def test_v1_name_passes_when_at_least_one_exact_v2_match_exists():
+    """One matching v2 name is sufficient, even when the name is duplicated."""
+    rows, summary = evaluate_v1_names_missing_v2(
+        [{"_id": "v1-a", "name": "shared"}],
+        ["shared", "shared"],
+    )
+
+    assert rows == [
+        {
+            "check_key": V1_NAME_MISSING_V2_CHECK_KEY,
+            "docdb_version": V1_NAME_MISSING_V2_DOCDB_VERSION,
+            "docdb_id": "v1-a",
+            "name": "shared",
+            "status": "pass",
+        }
+    ]
+    assert summary.failed_count == 0
+    assert summary.is_complete
+
+
+def test_v1_name_fails_when_no_v2_match_exists():
+    """A valid v1 record fails when its exact name is absent from v2."""
+    rows, summary = evaluate_v1_names_missing_v2(
+        [{"_id": "v1-b", "name": "missing"}],
+        {"present"},
+    )
+
+    assert rows[0]["status"] == "fail"
+    assert summary.failed_count == 1
+
+
+def test_v1_name_matching_is_exact_and_output_is_deterministic():
+    """Case and whitespace remain significant and rows have stable ordering."""
+    rows, summary = evaluate_v1_names_missing_v2(
+        [
+            {"_id": "v1-c", "name": "same"},
+            {"_id": "v1-b", "name": " same"},
+            {"_id": "v1-a", "name": "Same"},
+        ],
+        {"same"},
+    )
+
+    assert [row["docdb_id"] for row in rows] == ["v1-b", "v1-a", "v1-c"]
+    assert [row["status"] for row in rows] == ["fail", "fail", "pass"]
+    assert summary.failed_count == 2
+
+
+def test_v1_missing_names_are_skipped_and_malformed_rows_are_incomplete():
+    """The second check follows the first check's source-accounting policy."""
+    rows, summary = evaluate_v1_names_missing_v2(
+        [
+            {"_id": "v1-missing"},
+            {"_id": "v1-empty", "name": ""},
+            {"_id": "v1-malformed", "name": 7},
+            {"_id": "v1-valid", "name": "valid"},
+        ],
+        {"valid"},
+    )
+
+    assert [row["docdb_id"] for row in rows] == ["v1-valid"]
+    assert summary.candidate_count == 4
+    assert summary.processed_count == 1
+    assert summary.skipped_count == 2
+    assert summary.parse_failure_count == 1
+    assert not summary.is_complete
+
+
+def test_v1_duplicate_docdb_ids_fail_input():
+    """Repeated v1 IDs indicate an invalid source sweep."""
+    with pytest.raises(ValueError, match="Duplicate DocDB ID.*v1-a"):
+        evaluate_v1_names_missing_v2(
+            [
+                {"_id": "v1-a", "name": "one"},
+                {"_id": "v1-a", "name": "two"},
+            ],
+            set(),
+        )
+
+
+def test_v1_check_rejects_invalid_v2_reference_names():
+    """The reference population must already contain only valid names."""
+    with pytest.raises(ValueError, match="v2_names must contain only non-empty strings"):
+        evaluate_v1_names_missing_v2([{"_id": "v1-a", "name": "name"}], {""})
+
+
+def test_v1_projection_is_explicitly_minimal():
+    """The second check needs only v1 identity and name fields."""
+    assert V1_NAME_MISSING_V2_PROJECTION == {"_id": 1, "name": 1}
