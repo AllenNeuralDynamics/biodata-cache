@@ -28,7 +28,9 @@ from biodata_cache.utils import CacheLogMessage, setup_logging
 TABLE_NAME = "record_consistency_checks"
 MANIFEST_KEY = f"{TABLE_NAME}.manifest.json"
 SOURCE_COLUMNS = ("_id", "name", "location")
-V1_NAME_MISSING_V2_CHECK_DESCRIPTION = 'Fails each DocDB v1 record whose exact "name" has no matches in DocDB v2.'
+V1_NAME_MISSING_V2_CHECK_DESCRIPTION = (
+    "Fails every DocDB v1 record whose non-empty `name` has zero exact matches in DocDB v2."
+)
 V1_NAME_MISSING_V2_CHECK_IMPLEMENTATION_URL = (
     "https://github.com/AllenNeuralDynamics/biodata-cache/blob/bde9c5e/src/biodata_cache/record_consistency.py#L170"
 )

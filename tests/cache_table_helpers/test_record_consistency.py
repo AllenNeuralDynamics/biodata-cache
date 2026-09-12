@@ -88,7 +88,7 @@ def test_builds_all_flags_and_writes_completion_manifest(mock_backend, mock_v1_r
         {
             "candidate_count": 2,
             "check_key": "docdb_v1_name_missing_in_v2",
-            "description": 'Fails each DocDB v1 record whose exact "name" has no matches in DocDB v2.',
+            "description": "Fails every DocDB v1 record whose non-empty `name` has zero exact matches in DocDB v2.",
             "docdb_version": "v1",
             "failed_count": 1,
             "implementation_url": (
