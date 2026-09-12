@@ -120,6 +120,13 @@ def _job_asset_basics() -> None:
     publish_registry_fragment(NAMES["d2r"])
 
 
+def _job_record_consistency_checks() -> None:
+    """Build and publish all record-consistency checks."""
+    table_name = NAMES["record_consistency_checks"]
+    TABLE_REGISTRY[table_name](force_update=True)
+    publish_registry_fragment(table_name)
+
+
 def _job_fast() -> None:
     """Build all fast cache tables from DocDB and external databases."""
     for spec in table_specs_for_job("fast"):
@@ -416,6 +423,7 @@ def _job_time_to_qc() -> None:
 # the version and produces the tables every other job reads).
 JOBS: dict[str, Callable[[], None]] = {
     "asset_basics": _job_asset_basics,
+    "record_consistency_checks": _job_record_consistency_checks,
     "fast": _job_fast,
     "storage_lens": _job_storage_lens,
     "qc": _job_qc,
@@ -475,6 +483,7 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
     run_sync_job("asset_basics")
 
     if fast:
+        run_sync_job("record_consistency_checks")
         run_sync_job("fast")
 
     if slow:

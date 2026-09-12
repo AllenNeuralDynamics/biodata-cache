@@ -34,6 +34,11 @@ def test_table_specs_preserve_storage_contracts():
     assert manual_tables
     assert all(spec.sync_job is None for spec in manual_tables)
 
+    record_consistency = TABLE_SPECS_BY_NAME["record_consistency_checks"]
+    assert record_consistency.key == "record_consistency_checks"
+    assert record_consistency.sync_job == "record_consistency_checks"
+    assert record_consistency.partitioned is False
+
 
 def test_table_spec_jobs_are_known_sync_jobs():
     scheduled_jobs = {spec.sync_job for spec in TABLE_SPECS if spec.sync_job is not None}
