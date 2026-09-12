@@ -55,7 +55,7 @@ def test_builds_flags_from_asset_basics_and_writes_completion_manifest(mock_back
         {
             "candidate_count": 3,
             "check_key": "docdb_duplicate_name_v2",
-            "description": 'Fails each record in DocDB v2 whose exact "name" key is identical to another v2 record.',
+            "description": "Fails every DocDB v2 record whose non-empty `name` exactly matches another v2 record.",
             "docdb_version": "v2",
             "duplicate_group_count": 1,
             "failed_count": 2,
