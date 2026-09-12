@@ -28,6 +28,7 @@ from biodata_cache.utils import CacheLogMessage, setup_logging
 TABLE_NAME = "record_consistency_checks"
 MANIFEST_KEY = f"{TABLE_NAME}.manifest.json"
 SOURCE_COLUMNS = ("_id", "name", "location")
+V1_SWEEP_MAX_ATTEMPTS = 3
 V1_NAME_MISSING_V2_CHECK_DESCRIPTION = (
     "Fails every DocDB v1 record whose non-empty `name` has zero exact matches in DocDB v2."
 )
@@ -88,16 +89,49 @@ def _add_source_context(
 
 
 def _fetch_v1_records() -> list[dict[str, Any]]:
-    """Fetch the complete minimal v1 source population from DocDB."""
+    """Fetch a duplicate-free minimal v1 source population from DocDB."""
     from aind_data_access_api.document_db import MetadataDbClient
 
     client = MetadataDbClient(host=registry.API_GATEWAY_HOST, version="v1")
-    return client.retrieve_docdb_records(
-        filter_query={},
-        projection={column: 1 for column in SOURCE_COLUMNS},
-        sort={"_id": 1},
-        limit=0,
+    duplicate_ids: list[str] = []
+    for attempt in range(1, V1_SWEEP_MAX_ATTEMPTS + 1):
+        records = client.retrieve_docdb_records(
+            filter_query={},
+            projection={column: 1 for column in SOURCE_COLUMNS},
+            sort={"_id": 1},
+            limit=0,
+        )
+        duplicate_ids = _duplicate_docdb_ids(records)
+        if not duplicate_ids:
+            return records
+        if attempt < V1_SWEEP_MAX_ATTEMPTS:
+            logging.warning(
+                "DocDB v1 sweep attempt %d/%d repeated %d IDs; retrying",
+                attempt,
+                V1_SWEEP_MAX_ATTEMPTS,
+                len(duplicate_ids),
+            )
+
+    examples = ", ".join(repr(docdb_id) for docdb_id in duplicate_ids[:3])
+    raise ValueError(
+        f"DocDB v1 sweep remained inconsistent after {V1_SWEEP_MAX_ATTEMPTS} attempts; repeated IDs include {examples}"
     )
+
+
+def _duplicate_docdb_ids(records: list[Any]) -> list[str]:
+    """Return repeated string DocDB IDs in stable order."""
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for record in records:
+        if not isinstance(record, Mapping):
+            continue
+        docdb_id = record.get("_id")
+        if not isinstance(docdb_id, str):
+            continue
+        if docdb_id in seen:
+            duplicates.add(docdb_id)
+        seen.add(docdb_id)
+    return sorted(duplicates)
 
 
 def _v1_source_records(records: list[Any]) -> list[Any]:

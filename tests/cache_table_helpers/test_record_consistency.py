@@ -121,6 +121,39 @@ def test_fetches_complete_v1_projection(mock_client_class):
     )
 
 
+@patch("aind_data_access_api.document_db.MetadataDbClient")
+def test_retries_v1_sweep_after_pagination_repeats_id(mock_client_class):
+    from biodata_cache.cache_table_helpers.record_consistency import _fetch_v1_records
+
+    duplicate_sweep = [
+        {"_id": "v1-a", "name": "a", "location": None},
+        {"_id": "v1-a", "name": "a", "location": None},
+    ]
+    clean_sweep = [{"_id": "v1-a", "name": "a", "location": None}]
+    retrieve = mock_client_class.return_value.retrieve_docdb_records
+    retrieve.side_effect = [duplicate_sweep, clean_sweep]
+
+    assert _fetch_v1_records() == clean_sweep
+    assert retrieve.call_count == 2
+
+
+@patch("aind_data_access_api.document_db.MetadataDbClient")
+def test_rejects_repeated_ids_after_bounded_v1_sweep_retries(mock_client_class):
+    from biodata_cache.cache_table_helpers.record_consistency import _fetch_v1_records
+
+    duplicate_sweep = [
+        {"_id": "v1-a", "name": "a", "location": None},
+        {"_id": "v1-a", "name": "a", "location": None},
+    ]
+    retrieve = mock_client_class.return_value.retrieve_docdb_records
+    retrieve.return_value = duplicate_sweep
+
+    with pytest.raises(ValueError, match="remained inconsistent after 3 attempts"):
+        _fetch_v1_records()
+
+    assert retrieve.call_count == 3
+
+
 def test_builder_round_trips_through_memory_backend(mock_v1_records):
     backend = MemoryBackend()
     backend.write(
