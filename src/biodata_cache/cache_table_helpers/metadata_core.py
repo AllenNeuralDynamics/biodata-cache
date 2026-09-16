@@ -58,42 +58,48 @@ def metadata_core(force_update: bool = False) -> pd.DataFrame:
             version="v2",
         )
 
-        records = client.aggregate_docdb_records(
-            pipeline=[
-                {
-                    "$project": {
-                        "_id": 1,
-                        "_last_modified": 1,
-                        **{
-                            core_file: {
-                                "$ne": [{"$ifNull": [f"${core_file}", None]}, None]
-                            }
-                            for core_file in CORE_FILES
-                        },
-                    }
-                }
-            ]
+        record_ids = client.retrieve_docdb_records(
+            filter_query={},
+            projection={"_id": 1, "_last_modified": 1},
+            limit=0,
         )
 
         cached_last_modified = dict(zip(df["_id"], df["_last_modified"], strict=False))
-        current_ids = {record["_id"] for record in records}
-        if force_update:
-            update_ids = current_ids
-        else:
-            update_ids = {
-                record["_id"]
-                for record in records
-                if cached_last_modified.get(record["_id"]) != record["_last_modified"]
-            }
+        current_ids = {record["_id"] for record in record_ids}
+        update_ids = [
+            record["_id"]
+            for record in record_ids
+            if force_update or cached_last_modified.get(record["_id"]) != record["_last_modified"]
+        ]
+        del record_ids
 
+        BATCH_SIZE = 25
         rows = []
-        for record in records:
-            if record["_id"] not in update_ids:
-                continue
-            row = {"_id": record["_id"], "_last_modified": record.get("_last_modified")}
-            row.update({core_file: bool(record.get(core_file, False)) for core_file in CORE_FILES})
-            rows.append(row)
-        del records
+        for i in range(0, len(update_ids), BATCH_SIZE):
+            logging.info(
+                CacheLogMessage(
+                    backend=registry.BACKEND.__class__.__name__,
+                    table=registry.NAMES["core"],
+                    message=f"Fetching batch {i // BATCH_SIZE + 1}",
+                ).to_json()
+            )
+            batch_ids = update_ids[i : i + BATCH_SIZE]
+            batch_records = client.retrieve_docdb_records(
+                filter_query={"_id": {"$in": batch_ids}},
+                projection={"_id": 1, "_last_modified": 1, **{f: 1 for f in CORE_FILES}},
+                limit=0,
+            )
+            rows.extend(
+                [
+                    {
+                        "_id": record["_id"],
+                        "_last_modified": record.get("_last_modified"),
+                        **{core_file: record.get(core_file) is not None for core_file in CORE_FILES},
+                    }
+                    for record in batch_records
+                ]
+            )
+            del batch_records
 
         new_df = pd.DataFrame(rows, columns=columns)
         if force_update:
