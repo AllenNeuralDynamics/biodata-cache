@@ -58,6 +58,9 @@ def metadata_core(force_update: bool = False) -> pd.DataFrame:
             version="v2",
         )
 
+        if df.empty:
+            df = pd.DataFrame(columns=columns)
+
         record_ids = client.retrieve_docdb_records(
             filter_query={},
             projection={"_id": 1, "_last_modified": 1},
