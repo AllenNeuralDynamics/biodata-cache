@@ -17,6 +17,71 @@ from biodata_cache.utils import (
 )
 
 
+def _flatten_asset_record(record: dict) -> dict:
+    modalities = record.get("data_description", {}).get("modalities", [])
+    modality_abbreviations = [modality["abbreviation"] for modality in modalities if "abbreviation" in modality]
+
+    data_processes = record.get("processing", {}).get("data_processes", [])
+    if data_processes:
+        process_datetime = data_processes[-1].get("start_date_time", None)
+        process_date = process_datetime.split("T")[0]
+    else:
+        process_date = None
+
+    other_identifiers = record.get("other_identifiers", {})
+    code_ocean = other_identifiers.get("Code Ocean", None) if other_identifiers else None
+
+    acquisition_start = record.get("acquisition", {}).get("acquisition_start_time", None)
+    acq_subject_details = record.get("acquisition", {}).get("subject_details", {}) or {}
+    date_of_birth = acq_subject_details.get("date_of_birth", None)
+    year_of_birth = acq_subject_details.get("year_of_birth", None)
+    age = None
+    if acquisition_start and (date_of_birth or year_of_birth):
+        try:
+            acq_date = pd.to_datetime(acquisition_start)
+            if date_of_birth:
+                dob = pd.to_datetime(date_of_birth)
+            else:
+                dob = pd.Timestamp(int(year_of_birth), 1, 1)
+            age = (acq_date - dob).days
+        except Exception:
+            age = None
+
+    experimenters = [
+        e if isinstance(e, str) else e.get("name", "")
+        for e in (record.get("acquisition", {}).get("experimenters", []) or [])
+    ]
+    investigators = [
+        i.get("name", "") for i in (record.get("data_description", {}).get("investigators", []) or [])
+    ]
+    return {
+        "_id": record["_id"],
+        "_last_modified": record.get("_last_modified", None),
+        "created": record.get("_created", None),
+        "modalities": modality_abbreviations,
+        "project_name": record.get("data_description", {}).get("project_name", None),
+        "data_level": record.get("data_description", {}).get("data_level", None),
+        "subject_id": record.get("subject", {}).get("subject_id", None),
+        "acquisition_start_time": acquisition_start,
+        "acquisition_end_time": record.get("acquisition", {}).get("acquisition_end_time", None),
+        "code_ocean": code_ocean,
+        "process_date": process_date,
+        "genotype": record.get("subject", {}).get("subject_details", {}).get("genotype", None),
+        "age": age,
+        "acquisition_type": record.get("acquisition", {}).get("acquisition_type", None),
+        "location": record.get("location", None),
+        "name": record.get("name", None),
+        "experimenters": experimenters,
+        "experimenters_normalized": normalize_experimenters(experimenters),
+        "instrument_id": record.get("acquisition", {}).get("instrument_id", None),
+        "instrument_id_normalized": normalize_instrument_id(
+            record.get("acquisition", {}).get("instrument_id", None)
+        ),
+        "investigators": investigators,
+        "investigators_normalized": normalize_experimenters(investigators),
+    }
+
+
 def _load_asset_basics(force_update: bool = False) -> pd.DataFrame:
     """Load the complete asset basics table, refreshing it when necessary.
 
@@ -106,7 +171,7 @@ def _load_asset_basics(force_update: bool = False) -> pd.DataFrame:
 
         # Now batch by 100 IDs at a time to avoid overloading server, and fetch all the fields
         BATCH_SIZE = 100
-        asset_records = []
+        records = []
         for i in range(0, len(keep_ids), BATCH_SIZE):
             logging.info(
                 CacheLogMessage(
@@ -121,89 +186,9 @@ def _load_asset_basics(force_update: bool = False) -> pd.DataFrame:
                 projection={field: 1 for field in FIELDS + ["_id", "_last_modified"]},
                 limit=0,
             )
-            asset_records.extend(batch_records)
-
-        # Unwrap nested fields
-        records = []
-        for record in asset_records:
-            modalities = record.get("data_description", {}).get("modalities", [])
-            modality_abbreviations = [modality["abbreviation"] for modality in modalities if "abbreviation" in modality]
-
-            # Get the process date, convert to YYYY-MM-DD if present
-            data_processes = record.get("processing", {}).get("data_processes", [])
-            if data_processes:
-                latest_process = data_processes[-1]
-                process_datetime = latest_process.get("start_date_time", None)
-                process_date = process_datetime.split("T")[0]
-            else:
-                process_date = None
-
-            # Get the CO asset ID
-            other_identifiers = record.get("other_identifiers", {})
-            if other_identifiers:
-                code_ocean = other_identifiers.get("Code Ocean", None)
-            else:
-                code_ocean = None
-
-            # Calculate age in days from acquisition_start_time and date_of_birth or year_of_birth
-            acquisition_start = record.get("acquisition", {}).get("acquisition_start_time", None)
-            acq_subject_details = record.get("acquisition", {}).get("subject_details", {}) or {}
-            date_of_birth = acq_subject_details.get("date_of_birth", None)
-            year_of_birth = acq_subject_details.get("year_of_birth", None)
-            age = None
-            if acquisition_start and (date_of_birth or year_of_birth):
-                try:
-                    acq_date = pd.to_datetime(acquisition_start)
-                    if date_of_birth:
-                        dob = pd.to_datetime(date_of_birth)
-                    else:
-                        dob = pd.Timestamp(int(year_of_birth), 1, 1)
-                    age = (acq_date - dob).days
-                except Exception:
-                    age = None
-
-            flat_record = {
-                "_id": record["_id"],
-                "_last_modified": record.get("_last_modified", None),
-                # DocDB record creation time — the asset's metadata record is
-                # written when the asset finishes uploading, so this is the
-                # closest available proxy for upload time.
-                "created": record.get("_created", None),
-                "modalities": modality_abbreviations,
-                "project_name": record.get("data_description", {}).get("project_name", None),
-                "data_level": record.get("data_description", {}).get("data_level", None),
-                "subject_id": record.get("subject", {}).get("subject_id", None),
-                "acquisition_start_time": record.get("acquisition", {}).get("acquisition_start_time", None),
-                "acquisition_end_time": record.get("acquisition", {}).get("acquisition_end_time", None),
-                "code_ocean": code_ocean,
-                "process_date": process_date,
-                "genotype": record.get("subject", {}).get("subject_details", {}).get("genotype", None),
-                "age": age,
-                "acquisition_type": record.get("acquisition", {}).get("acquisition_type", None),
-                "location": record.get("location", None),
-                "name": record.get("name", None),
-                "experimenters": [
-                    e if isinstance(e, str) else e.get("name", "")
-                    for e in (record.get("acquisition", {}).get("experimenters", []) or [])
-                ],
-                "experimenters_normalized": normalize_experimenters(
-                    [
-                        e if isinstance(e, str) else e.get("name", "")
-                        for e in (record.get("acquisition", {}).get("experimenters", []) or [])
-                    ]
-                ),
-                "instrument_id": record.get("acquisition", {}).get("instrument_id", None),
-                "instrument_id_normalized": normalize_instrument_id(
-                    record.get("acquisition", {}).get("instrument_id", None)
-                ),
-                "investigators": [
-                    i.get("name", "") for i in (record.get("data_description", {}).get("investigators", []) or [])
-                ],
-                "investigators_normalized": normalize_experimenters(
-                    [i.get("name", "") for i in (record.get("data_description", {}).get("investigators", []) or [])]
-                ),
-            }
-            records.append(flat_record)
+            for record in batch_records:
+                records.append(_flatten_asset_record(record))
+            del batch_records
 
         # Combine new records with the old df and store in cache
         new_df = pd.DataFrame(records)

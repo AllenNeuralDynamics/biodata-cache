@@ -42,14 +42,14 @@ def metadata_core(force_update: bool = False) -> pd.DataFrame:
     if df.empty and not force_update:
         raise ValueError("Cache is empty. Use force_update=True to fetch data from database.")
 
-    if df.empty or force_update:
+    if not df.empty or force_update:
         setup_logging()
         logging.info(
             CacheLogMessage(
                 backend=registry.BACKEND.__class__.__name__, table=registry.NAMES["core"], message="Updating cache"
             ).to_json()
         )
-        df = pd.DataFrame(columns=["_id", "_last_modified"] + CORE_FILES)
+        columns = ["_id", "_last_modified"] + CORE_FILES
 
         from aind_data_access_api.document_db import MetadataDbClient
 
@@ -58,48 +58,49 @@ def metadata_core(force_update: bool = False) -> pd.DataFrame:
             version="v2",
         )
 
-        record_ids = client.retrieve_docdb_records(
-            filter_query={},
-            projection={"_id": 1, "_last_modified": 1},
-            limit=0,
+        records = client.aggregate_docdb_records(
+            pipeline=[
+                {
+                    "$project": {
+                        "_id": 1,
+                        "_last_modified": 1,
+                        **{
+                            core_file: {
+                                "$ne": [{"$ifNull": [f"${core_file}", None]}, None]
+                            }
+                            for core_file in CORE_FILES
+                        },
+                    }
+                }
+            ]
         )
 
-        keep_ids = []
         cached_last_modified = dict(zip(df["_id"], df["_last_modified"], strict=False))
-        for record in record_ids:
-            if cached_last_modified.get(record["_id"]) != record["_last_modified"]:
-                keep_ids.append(record["_id"])
-
-        BATCH_SIZE = 100
-        asset_records = []
-        for i in range(0, len(keep_ids), BATCH_SIZE):
-            logging.info(
-                CacheLogMessage(
-                    backend=registry.BACKEND.__class__.__name__,
-                    table=registry.NAMES["core"],
-                    message=f"Fetching batch {i // BATCH_SIZE + 1}",
-                ).to_json()
-            )
-            batch_ids = keep_ids[i : i + BATCH_SIZE]
-            batch_records = client.retrieve_docdb_records(
-                filter_query={"_id": {"$in": batch_ids}},
-                projection={"_id": 1, "_last_modified": 1, **{f: 1 for f in CORE_FILES}},
-                limit=0,
-            )
-            asset_records.extend(batch_records)
-
-        records = []
-        for record in asset_records:
-            flat_record = {
-                "_id": record["_id"],
-                "_last_modified": record.get("_last_modified", None),
+        current_ids = {record["_id"] for record in records}
+        if force_update:
+            update_ids = current_ids
+        else:
+            update_ids = {
+                record["_id"]
+                for record in records
+                if cached_last_modified.get(record["_id"]) != record["_last_modified"]
             }
-            for core_file in CORE_FILES:
-                flat_record[core_file] = record.get(core_file) is not None
-            records.append(flat_record)
 
-        new_df = pd.DataFrame(records)
-        df = pd.concat([df[~df["_id"].isin(keep_ids)], new_df], ignore_index=True)
+        rows = []
+        for record in records:
+            if record["_id"] not in update_ids:
+                continue
+            row = {"_id": record["_id"], "_last_modified": record.get("_last_modified")}
+            row.update({core_file: bool(record.get(core_file, False)) for core_file in CORE_FILES})
+            rows.append(row)
+        del records
+
+        new_df = pd.DataFrame(rows, columns=columns)
+        if force_update:
+            df = new_df
+        else:
+            cached_rows = df[df["_id"].isin(current_ids) & ~df["_id"].isin(update_ids)]
+            df = pd.concat([cached_rows, new_df], ignore_index=True)
 
         registry.BACKEND.write(registry.NAMES["core"], df)
 
