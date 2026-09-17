@@ -5,11 +5,13 @@ import pytest
 from biodata_cache.record_consistency import (
     CHECK_KEY,
     DOCDB_VERSION,
+    OPEN_DATA_CODE_OCEAN_CHECK_KEY,
     PROJECTION,
     V1_NAME_MISSING_V2_CHECK_KEY,
     V1_NAME_MISSING_V2_DOCDB_VERSION,
     V1_NAME_MISSING_V2_PROJECTION,
     evaluate_duplicate_names_v2,
+    evaluate_open_data_code_ocean_assets,
     evaluate_v1_names_missing_v2,
 )
 
@@ -220,3 +222,68 @@ def test_v1_check_rejects_invalid_v2_reference_names():
 def test_v1_projection_is_explicitly_minimal():
     """The second check needs only v1 identity and name fields."""
     assert V1_NAME_MISSING_V2_PROJECTION == {"_id": 1, "name": 1}
+
+
+def test_open_data_prefix_passes_for_exact_external_asset_match():
+    """Name, bucket, and normalized prefix must all match exactly."""
+    rows, summary = evaluate_open_data_code_ocean_assets(
+        ["asset-a/"],
+        [
+            {
+                "name": "asset-a",
+                "bucket": "aind-open-data",
+                "prefix": "/asset-a/",
+                "external": True,
+            }
+        ],
+    )
+
+    assert rows == [
+        {
+            "check_key": OPEN_DATA_CODE_OCEAN_CHECK_KEY,
+            "docdb_version": None,
+            "docdb_id": None,
+            "name": "asset-a",
+            "location": "s3://aind-open-data/asset-a/",
+            "status": "pass",
+        }
+    ]
+    assert summary.passed_count == 1
+    assert summary.is_complete
+
+
+@pytest.mark.parametrize(
+    ("asset", "expected_status"),
+    [
+        (None, "unknown"),
+        ({"name": "Asset-A", "bucket": "aind-open-data", "prefix": "asset-a", "external": True}, "unknown"),
+        ({"name": "asset-a", "bucket": "other", "prefix": "asset-a", "external": True}, "fail"),
+        ({"name": "asset-a", "bucket": "aind-open-data", "prefix": "other", "external": True}, "fail"),
+        ({"name": "asset-a", "bucket": "aind-open-data", "prefix": "asset-a", "external": False}, "fail"),
+    ],
+)
+def test_open_data_prefix_distinguishes_unknown_from_visible_mismatch(asset, expected_status):
+    """Permission-limited absence is unknown; visible target mismatches fail."""
+    assets = [] if asset is None else [asset]
+
+    rows, _ = evaluate_open_data_code_ocean_assets(["asset-a/"], assets)
+
+    assert rows[0]["status"] == expected_status
+
+
+def test_open_data_root_slash_prefix_is_retained_as_unknown():
+    """The bucket's unusual slash folder remains visible instead of disappearing."""
+    rows, summary = evaluate_open_data_code_ocean_assets(["/"], [])
+
+    assert rows[0]["name"] == "/"
+    assert rows[0]["location"] == "s3://aind-open-data//"
+    assert rows[0]["status"] == "unknown"
+    assert summary.unknown_count == 1
+
+
+def test_open_data_prefixes_require_complete_well_formed_input():
+    """Malformed or repeated S3 listings invalidate publication."""
+    with pytest.raises(ValueError, match="contains duplicates"):
+        evaluate_open_data_code_ocean_assets(["asset-a/", "asset-a/"], [])
+    with pytest.raises(ValueError, match="Malformed top-level S3 prefix"):
+        evaluate_open_data_code_ocean_assets(["asset-a"], [])

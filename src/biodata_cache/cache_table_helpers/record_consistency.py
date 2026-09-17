@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
@@ -16,11 +17,15 @@ from biodata_cache.record_consistency import (
     CHECK_IMPLEMENTATION_URL,
     CHECK_KEY,
     DOCDB_VERSION,
+    OPEN_DATA_BUCKET,
+    OPEN_DATA_CODE_OCEAN_CHECK_KEY,
     V1_NAME_MISSING_V2_CHECK_KEY,
     V1_NAME_MISSING_V2_DOCDB_VERSION,
     DuplicateNameCheckSummary,
+    OpenDataCodeOceanCheckSummary,
     V1NameMissingV2CheckSummary,
     evaluate_duplicate_names_v2,
+    evaluate_open_data_code_ocean_assets,
     evaluate_v1_names_missing_v2,
 )
 from biodata_cache.utils import CacheLogMessage, setup_logging
@@ -35,6 +40,16 @@ V1_NAME_MISSING_V2_CHECK_DESCRIPTION = (
 V1_NAME_MISSING_V2_CHECK_IMPLEMENTATION_URL = (
     "https://github.com/AllenNeuralDynamics/biodata-cache/blob/bde9c5e/src/biodata_cache/record_consistency.py#L170"
 )
+OPEN_DATA_CODE_OCEAN_CHECK_DESCRIPTION = (
+    "Fails each top-level `aind-open-data` S3 prefix with visible exact-name Code Ocean assets when none externally "
+    "references that exact bucket and prefix."
+)
+OPEN_DATA_CODE_OCEAN_CHECK_IMPLEMENTATION_URL = (
+    "https://github.com/AllenNeuralDynamics/biodata-cache/blob/"
+    "codex/record-consistency-open-data-code-ocean/src/biodata_cache/record_consistency.py#L272"
+)
+CODE_OCEAN_DOMAIN = "https://codeocean.allenneuraldynamics.org"
+CODE_OCEAN_API_KEY_ENV = "CUSTOM_KEY"
 RESULT_COLUMNS = (
     "check_key",
     "status",
@@ -144,6 +159,47 @@ def _v1_source_records(records: list[Any]) -> list[Any]:
     ]
 
 
+def _list_open_data_prefixes() -> list[str]:
+    """List all top-level folders in the public open-data bucket anonymously."""
+    import boto3
+    from botocore import UNSIGNED
+    from botocore.config import Config
+
+    client = boto3.client("s3", config=Config(signature_version=UNSIGNED))
+    paginator = client.get_paginator("list_objects_v2")
+    prefixes = [
+        item["Prefix"]
+        for page in paginator.paginate(Bucket=OPEN_DATA_BUCKET, Delimiter="/")
+        for item in page.get("CommonPrefixes", [])
+    ]
+    return sorted(prefixes)
+
+
+def _fetch_external_code_ocean_assets() -> list[dict[str, Any]]:
+    """Fetch all visible, unarchived external Code Ocean assets."""
+    from codeocean import CodeOcean
+    from codeocean.data_asset import DataAssetSearchOrigin, DataAssetSearchParams
+
+    token = os.environ.get(CODE_OCEAN_API_KEY_ENV)
+    if not token:
+        raise ValueError(f"{CODE_OCEAN_API_KEY_ENV} is required for the Code Ocean consistency check")
+
+    client = CodeOcean(domain=CODE_OCEAN_DOMAIN, token=token, retries=3)
+    assets = client.data_assets.search_data_assets_iterator(
+        DataAssetSearchParams(origin=DataAssetSearchOrigin.External, archived=False, limit=1000)
+    )
+    return [
+        {
+            "id": asset.id,
+            "name": asset.name,
+            "bucket": asset.source_bucket.bucket if asset.source_bucket else None,
+            "prefix": asset.source_bucket.prefix if asset.source_bucket else None,
+            "external": asset.source_bucket.external if asset.source_bucket else None,
+        }
+        for asset in assets
+    ]
+
+
 def _duplicate_name_v2_manifest(summary: DuplicateNameCheckSummary) -> dict[str, Any]:
     """Build manifest accounting for the v2 duplicate-name check."""
     return {
@@ -179,13 +235,31 @@ def _v1_name_missing_v2_manifest(summary: V1NameMissingV2CheckSummary) -> dict[s
     }
 
 
+def _open_data_code_ocean_manifest(summary: OpenDataCodeOceanCheckSummary) -> dict[str, Any]:
+    """Build manifest accounting for open-data Code Ocean coverage."""
+    return {
+        "check_key": OPEN_DATA_CODE_OCEAN_CHECK_KEY,
+        "description": OPEN_DATA_CODE_OCEAN_CHECK_DESCRIPTION,
+        "implementation_url": OPEN_DATA_CODE_OCEAN_CHECK_IMPLEMENTATION_URL,
+        "docdb_version": None,
+        "candidate_count": summary.candidate_count,
+        "processed_count": summary.processed_count,
+        "skipped_count": 0,
+        "parse_failure_count": 0,
+        "passed_count": summary.passed_count,
+        "failed_count": summary.failed_count,
+        "unknown_count": summary.unknown_count,
+    }
+
+
 @registry.register_table(registry.NAMES["record_consistency_checks"])
 def record_consistency_checks(force_update: bool = False) -> pd.DataFrame:
     """Build all record-consistency checks from cached prerequisite tables.
 
     The first check detects exact duplicate names in cached v2 DocDB records.
     The second checks a complete projected v1 DocDB sweep for names absent from
-    v2. The builder never contacts S3 or Code Ocean. ``asset_basics`` must already
+    v2. The third compares every top-level public ``aind-open-data`` prefix with
+    the visible Code Ocean external-asset catalog. ``asset_basics`` must already
     have been built by the prerequisite sync job. A failed or malformed source
     sweep raises before writing data, preserving the previous result.
 
@@ -212,7 +286,7 @@ def record_consistency_checks(force_update: bool = False) -> pd.DataFrame:
         CacheLogMessage(
             backend=registry.BACKEND.__class__.__name__,
             table=TABLE_NAME,
-            message="Updating record-consistency checks from asset_basics and DocDB v1",
+            message="Updating record-consistency checks from asset_basics, DocDB v1, S3, and Code Ocean",
         ).to_json()
     )
     source_records = _asset_basics_records(source)
@@ -232,9 +306,14 @@ def record_consistency_checks(force_update: bool = False) -> pd.DataFrame:
             f"Cannot publish incomplete v1-name coverage flags: {v1_summary.parse_failure_count} parse failures"
         )
 
+    open_data_rows, open_data_summary = evaluate_open_data_code_ocean_assets(
+        _list_open_data_prefixes(),
+        _fetch_external_code_ocean_assets(),
+    )
+
     rows = sorted(
-        [*duplicate_rows, *v1_rows],
-        key=lambda row: (row["check_key"], row["name"], row["docdb_id"]),
+        [*duplicate_rows, *v1_rows, *open_data_rows],
+        key=lambda row: (row["check_key"], row["name"], row["docdb_id"] or ""),
     )
 
     run_id = uuid4().hex
@@ -246,6 +325,7 @@ def record_consistency_checks(force_update: bool = False) -> pd.DataFrame:
     check_manifests = [
         _duplicate_name_v2_manifest(duplicate_summary),
         _v1_name_missing_v2_manifest(v1_summary),
+        _open_data_code_ocean_manifest(open_data_summary),
     ]
     manifest = {
         "complete": True,
@@ -276,6 +356,6 @@ def record_consistency_checks_columns() -> list[Column]:
         Column(name="status", description="Check result: pass, fail, or unknown"),
         Column(name="docdb_id", description="DocDB record ID"),
         Column(name="docdb_version", description="DocDB metadata version checked"),
-        Column(name="name", description="Exact DocDB asset name evaluated"),
-        Column(name="location", description="S3 location from the source DocDB record, when available"),
+        Column(name="name", description="Exact record or asset name evaluated"),
+        Column(name="location", description="S3 location evaluated, when available"),
     ]
