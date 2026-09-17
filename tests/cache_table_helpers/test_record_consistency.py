@@ -1,6 +1,7 @@
 """Unit tests for the record-consistency checks cache table."""
 
 import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pandas as pd
@@ -33,8 +34,24 @@ def mock_v1_records():
         yield mocked
 
 
+@pytest.fixture
+def mock_cross_service_sources():
+    """Avoid live S3 and Code Ocean calls in cache-builder tests."""
+    with (
+        patch(
+            "biodata_cache.cache_table_helpers.record_consistency._list_open_data_prefixes",
+            return_value=[],
+        ) as prefixes,
+        patch(
+            "biodata_cache.cache_table_helpers.record_consistency._fetch_external_code_ocean_assets",
+            return_value=[],
+        ) as assets,
+    ):
+        yield prefixes, assets
+
+
 @patch("biodata_cache.cache_table_helpers.record_consistency.registry.BACKEND")
-def test_builds_all_flags_and_writes_completion_manifest(mock_backend, mock_v1_records):
+def test_builds_all_flags_and_writes_completion_manifest(mock_backend, mock_v1_records, mock_cross_service_sources):
     mock_backend.read.side_effect = [
         pd.DataFrame(),
         _basics(
@@ -62,7 +79,7 @@ def test_builds_all_flags_and_writes_completion_manifest(mock_backend, mock_v1_r
     assert manifest_key == MANIFEST_KEY
     manifest = json.loads(manifest_text)
     assert manifest["complete"] is True
-    assert manifest["check_count"] == 2
+    assert manifest["check_count"] == 3
     assert manifest["passed_count"] == 2
     assert manifest["failed_count"] == 3
     assert manifest["unknown_count"] == 0
@@ -101,7 +118,106 @@ def test_builds_all_flags_and_writes_completion_manifest(mock_backend, mock_v1_r
             "skipped_count": 0,
             "unknown_count": 0,
         },
+        {
+            "candidate_count": 0,
+            "check_key": "s3_open_data_prefix_code_ocean_external_asset",
+            "description": (
+                "Fails each top-level `aind-open-data` S3 prefix with visible exact-name Code Ocean assets when "
+                "none externally references that exact bucket and prefix."
+            ),
+            "docdb_version": None,
+            "failed_count": 0,
+            "implementation_url": (
+                "https://github.com/AllenNeuralDynamics/biodata-cache/blob/"
+                "codex/record-consistency-open-data-code-ocean/src/biodata_cache/record_consistency.py#L272"
+            ),
+            "parse_failure_count": 0,
+            "passed_count": 0,
+            "processed_count": 0,
+            "skipped_count": 0,
+            "unknown_count": 0,
+        },
     ]
+
+
+@patch("biodata_cache.cache_table_helpers.record_consistency.registry.BACKEND")
+def test_appends_cross_service_results_to_shared_table(mock_backend, mock_v1_records, mock_cross_service_sources):
+    """The S3/Code Ocean check reuses the generic consistency table contract."""
+    prefixes, assets = mock_cross_service_sources
+    mock_backend.read.side_effect = [
+        pd.DataFrame(),
+        _basics({"_id": "v2-a", "name": "asset-a", "location": "s3://aind-open-data/asset-a"}),
+    ]
+    prefixes.return_value = ["asset-a/", "asset-b/"]
+    assets.return_value = [{"name": "asset-a", "bucket": "aind-open-data", "prefix": "asset-a", "external": True}]
+
+    result = record_consistency_checks(force_update=True)
+
+    cross_service = result[result["check_key"] == "s3_open_data_prefix_code_ocean_external_asset"]
+    assert cross_service["name"].tolist() == ["asset-a", "asset-b"]
+    assert cross_service["status"].tolist() == ["pass", "unknown"]
+    assert cross_service["docdb_id"].isna().all()
+
+
+@patch("boto3.client")
+def test_lists_every_public_top_level_s3_prefix_anonymously(mock_boto_client):
+    """S3 collection uses root delimiter pagination and unsigned requests."""
+    from botocore import UNSIGNED
+
+    from biodata_cache.cache_table_helpers.record_consistency import _list_open_data_prefixes
+
+    paginator = mock_boto_client.return_value.get_paginator.return_value
+    paginator.paginate.return_value = [
+        {"CommonPrefixes": [{"Prefix": "asset-b/"}]},
+        {"CommonPrefixes": [{"Prefix": "asset-a/"}]},
+    ]
+
+    assert _list_open_data_prefixes() == ["asset-a/", "asset-b/"]
+    assert mock_boto_client.call_args.kwargs["config"].signature_version == UNSIGNED
+    mock_boto_client.return_value.get_paginator.assert_called_once_with("list_objects_v2")
+    paginator.paginate.assert_called_once_with(Bucket="aind-open-data", Delimiter="/")
+
+
+@patch.dict("os.environ", {"CUSTOM_KEY": "secret"}, clear=False)
+@patch("codeocean.CodeOcean")
+def test_fetches_paginated_external_code_ocean_catalog(mock_client_class):
+    """Code Ocean collection delegates pagination to one external-asset sweep."""
+    from codeocean.data_asset import DataAssetSearchOrigin
+
+    from biodata_cache.cache_table_helpers.record_consistency import _fetch_external_code_ocean_assets
+
+    source = SimpleNamespace(bucket="aind-open-data", prefix="asset-a", external=True)
+    mock_client_class.return_value.data_assets.search_data_assets_iterator.return_value = iter(
+        [SimpleNamespace(id="co-a", name="asset-a", source_bucket=source)]
+    )
+
+    assert _fetch_external_code_ocean_assets() == [
+        {
+            "id": "co-a",
+            "name": "asset-a",
+            "bucket": "aind-open-data",
+            "prefix": "asset-a",
+            "external": True,
+        }
+    ]
+    mock_client_class.assert_called_once_with(
+        domain="https://codeocean.allenneuraldynamics.org",
+        token="secret",
+        retries=3,
+    )
+    params = mock_client_class.return_value.data_assets.search_data_assets_iterator.call_args.args[0]
+    assert params.origin == DataAssetSearchOrigin.External
+    assert params.archived is False
+    assert params.limit == 1000
+
+
+@patch.dict("os.environ", {}, clear=True)
+def test_code_ocean_catalog_requires_explicit_token():
+    """The cross-service check fails closed when authentication is absent."""
+    from biodata_cache.cache_table_helpers.record_consistency import _fetch_external_code_ocean_assets
+
+    with pytest.raises(ValueError, match="CUSTOM_KEY is required"):
+        _fetch_external_code_ocean_assets()
 
 
 @patch("aind_data_access_api.document_db.MetadataDbClient")
@@ -154,7 +270,7 @@ def test_rejects_repeated_ids_after_bounded_v1_sweep_retries(mock_client_class):
     assert retrieve.call_count == 3
 
 
-def test_builder_round_trips_through_memory_backend(mock_v1_records):
+def test_builder_round_trips_through_memory_backend(mock_v1_records, mock_cross_service_sources):
     backend = MemoryBackend()
     backend.write(
         "asset_basics",
