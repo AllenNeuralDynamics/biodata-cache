@@ -32,7 +32,7 @@ Run **`asset_basics` first**, then the parallel jobs, then **`cell-by-everything
 | `BIODATA_CACHE_SYNC_JOB` | Builds | Depends on | Notes |
 |---|---|---|---|
 | `asset_basics` | `asset_basics`, `source_data` | — | **Must run first.** Registers the version, then builds `asset_basics` and `source_data`. `source_data` lives here because `smartspim` and `exaspim` read it from cache. |
-| `record_consistency_checks` | `record_consistency_checks` | `asset_basics` | Runs every registered record-consistency check. The first check detects exact duplicate names in cached v2 DocDB records; the table publishes only after complete classification. |
+| `record_consistency_checks` | `record_consistency_checks` | `asset_basics` | Runs every registered check. Detects duplicate v2 names and v1 names absent from v2; the latter uses a projected v1 DocDB sweep. Publishes only after complete classification. |
 | `fast`            | `unique_project_names`, `unique_subject_ids`, `unique_genotypes`, `metadata_core`, `metadata_upgrade`, `platform_fib`, `platform_mouselight`, `platform_qc` | `asset_basics` | All the cheap metadata tables, grouped into one capsule. |
 | `qc`              | `quality_control` | `asset_basics` | Fetches QC-bearing records in 50-record batches and partitions them by raw asset. |
 | `smartspim`       | `platform_smartspim` | `asset_basics` | |
