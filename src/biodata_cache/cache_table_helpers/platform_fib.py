@@ -10,6 +10,12 @@ from biodata_cache.models import Column
 from biodata_cache.utils import CacheLogMessage, setup_logging
 
 BATCH_SIZE = 100
+_TARGET_COORDINATE_FIELDS = {
+    "AP": "target_coordinate_ap",
+    "ML": "target_coordinate_ml",
+    "SI": "target_coordinate_si",
+    "DEPTH": "target_coordinate_depth",
+}
 
 
 def _fetch_fib_records(asset_names: list[str]) -> list[dict]:
@@ -101,17 +107,62 @@ def _extract_fiber_structure_map(record: dict) -> dict[str, str]:
     return fiber_structure
 
 
+def _extract_fiber_target_coordinates(record: dict) -> dict[str, dict]:
+    """Build a map of fiber name to implant translation in the surgery coordinate system."""
+    fiber_coordinates: dict[str, dict] = {}
+    procs_root = record.get("procedures") or {}
+    for subject_proc in procs_root.get("subject_procedures") or []:
+        coordinate_system = subject_proc.get("coordinate_system") or {}
+        axes = coordinate_system.get("axes") or []
+        for proc in subject_proc.get("procedures") or []:
+            if proc.get("object_type") != "Probe implant":
+                continue
+            device = proc.get("implanted_device") or {}
+            fiber_name = device.get("name")
+            if not fiber_name:
+                continue
+            config = proc.get("device_config") or {}
+            translation_transform = next(
+                (
+                    transform
+                    for transform in config.get("transform") or []
+                    if transform.get("object_type") == "Translation"
+                ),
+                None,
+            )
+            translation = (translation_transform or {}).get("translation")
+            if not isinstance(translation, (list, tuple)) or len(translation) != len(axes):
+                continue
+
+            coordinates = {field: None for field in _TARGET_COORDINATE_FIELDS.values()}
+            for axis, value in zip(axes, translation):
+                field = _TARGET_COORDINATE_FIELDS.get((axis.get("name") or "").upper())
+                if field:
+                    coordinates[field] = value
+            coordinates.update(
+                {
+                    "target_coordinate_system": coordinate_system.get("name"),
+                    "target_coordinate_origin": coordinate_system.get("origin"),
+                    "target_coordinate_unit": coordinate_system.get("axis_unit"),
+                }
+            )
+            fiber_coordinates[fiber_name] = coordinates
+    return fiber_coordinates
+
+
 def _build_fib_rows(records: list[dict]) -> list[dict]:
-    """Build one row per (asset_name, fiber, channel) with intended_measurement and targeted_structure."""
+    """Build one row per (asset_name, fiber, channel) with measurement and target metadata."""
     rows = []
     for record in records:
         asset_name = record.get("name")
         fiber_structure = {_normalize(k): v for k, v in _extract_fiber_structure_map(record).items()}
+        fiber_coordinates = {_normalize(k): v for k, v in _extract_fiber_target_coordinates(record).items()}
         entries = _extract_fiber_channel_entries(record, set(fiber_structure.keys()))
 
         for fiber, patch_cord, channel, intended_measurement in entries:
             if intended_measurement == "None":
                 continue
+            coordinates = fiber_coordinates.get(_normalize(fiber), {})
             rows.append(
                 {
                     "asset_name": asset_name,
@@ -120,6 +171,13 @@ def _build_fib_rows(records: list[dict]) -> list[dict]:
                     "channel": channel,
                     "intended_measurement": intended_measurement,
                     "targeted_structure": fiber_structure.get(fiber, "missing"),
+                    "target_coordinate_ap": coordinates.get("target_coordinate_ap"),
+                    "target_coordinate_ml": coordinates.get("target_coordinate_ml"),
+                    "target_coordinate_si": coordinates.get("target_coordinate_si"),
+                    "target_coordinate_depth": coordinates.get("target_coordinate_depth"),
+                    "target_coordinate_system": coordinates.get("target_coordinate_system"),
+                    "target_coordinate_origin": coordinates.get("target_coordinate_origin"),
+                    "target_coordinate_unit": coordinates.get("target_coordinate_unit"),
                 }
             )
     return rows
@@ -129,8 +187,9 @@ def _build_fib_rows(records: list[dict]) -> list[dict]:
 def platform_fib(force_update: bool = False) -> pd.DataFrame:
     """Build a long-form DataFrame of fiber photometry assets.
 
-    One row per (asset_name, fiber, channel) with the intended measurement and primary
-    targeted brain structure for that combination. Missing values are the string 'missing'.
+    One row per (asset_name, fiber, channel) with the intended measurement, primary
+    targeted brain structure, and implant translation coordinates for that combination.
+    Missing structure values are the string 'missing'; unavailable coordinates are null.
     Melt to wide form in the downstream viewer. Results are cached.
 
     Args:
@@ -138,7 +197,7 @@ def platform_fib(force_update: bool = False) -> pd.DataFrame:
 
     Returns:
         DataFrame with columns: asset_name, fiber, patch_cord, channel,
-        intended_measurement, targeted_structure.
+        intended_measurement, targeted_structure, target coordinate components and frame metadata.
     """
     df = registry.BACKEND.read(registry.NAMES["fib"])
 
@@ -197,4 +256,14 @@ def platform_fib_columns() -> list[Column]:
             name="targeted_structure",
             description="CCF acronym of the primary targeted brain structure; 'missing' if unavailable or 'root'",
         ),
+        Column(name="target_coordinate_ap", description="Implant translation along the AP axis; null if unavailable"),
+        Column(name="target_coordinate_ml", description="Implant translation along the ML axis; null if unavailable"),
+        Column(name="target_coordinate_si", description="Implant translation along the SI axis; null if unavailable"),
+        Column(
+            name="target_coordinate_depth",
+            description="Implant translation along the Depth axis; null if unavailable",
+        ),
+        Column(name="target_coordinate_system", description="Surgery coordinate-system name for the translation"),
+        Column(name="target_coordinate_origin", description="Origin of the surgery coordinate system"),
+        Column(name="target_coordinate_unit", description="Unit of the surgery coordinate-system axes"),
     ]
