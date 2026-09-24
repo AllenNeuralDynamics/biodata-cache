@@ -361,18 +361,42 @@ def test_filters_only_raw_spim_assets(mock_backend, mock_asset_basics, mock_sour
     mock_backend.read.return_value = pd.DataFrame()
     mock_asset_basics.return_value = pd.DataFrame(
         {
-            "data_level": ["raw", "raw", "derived"],
-            "modalities": [np.array(["SPIM"]), np.array(["ECEPHYS"]), np.array(["SPIM"])],
-            "name": ["spim_raw", "ecephys_raw", "spim_derived"],
-            "instrument_id": ["SmartSPIM_123", "probe_123", "SmartSPIM_123"],
+            "data_level": ["raw", "raw", "raw", "raw", "derived"],
+            "modalities": [
+                np.array(["SPIM"]),
+                np.array(["SPIM"]),
+                np.array(["SPIM"]),
+                np.array(["ECEPHYS"]),
+                np.array(["SPIM"]),
+            ],
+            "name": ["spim_raw", "exa_spim_raw", "generic_spim_raw", "ecephys_raw", "spim_derived"],
+            "instrument_id": [
+                "SmartSPIM_123",
+                "exa-smartspim-123",
+                "SPIM_123",
+                "SmartSPIM_123",
+                "SmartSPIM_123",
+            ],
         }
     )
     mock_source_data.return_value = pd.DataFrame(
         {
-            "name": ["spim_raw_stitched_2026-01-02_00-00-00", "ecephys_raw_derived", "spim_derived_stitched"],
-            "source_data": ["spim_raw", "ecephys_raw", "spim_derived"],
-            "pipeline_name": ["stitching", "pipeline", "stitching"],
-            "processing_time": ["2026-01-02_00-00-00", "2026-01-02_00-00-00", "2026-01-02_00-00-00"],
+            "name": [
+                "spim_raw_stitched_2026-01-02_00-00-00",
+                "exa_spim_raw_stitched",
+                "generic_spim_raw_stitched",
+                "ecephys_raw_derived",
+                "spim_derived_stitched",
+            ],
+            "source_data": ["spim_raw", "exa_spim_raw", "generic_spim_raw", "ecephys_raw", "spim_derived"],
+            "pipeline_name": ["stitching", "stitching", "stitching", "pipeline", "stitching"],
+            "processing_time": [
+                "2026-01-02_00-00-00",
+                "2026-01-02_00-00-00",
+                "2026-01-02_00-00-00",
+                "2026-01-02_00-00-00",
+                "2026-01-02_00-00-00",
+            ],
         }
     )
     mock_raw_ng_link.return_value = None
@@ -381,6 +405,8 @@ def test_filters_only_raw_spim_assets(mock_backend, mock_asset_basics, mock_sour
             assets_smartspim(force_update=True)
     raw_to_stitched_arg = mock_build.call_args[0][0]
     assert "spim_raw" in raw_to_stitched_arg
+    assert "exa_spim_raw" in raw_to_stitched_arg
+    assert "generic_spim_raw" not in raw_to_stitched_arg
     assert "ecephys_raw" not in raw_to_stitched_arg
     assert "spim_derived" not in raw_to_stitched_arg
 

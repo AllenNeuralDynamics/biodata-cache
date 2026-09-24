@@ -214,7 +214,7 @@ def assets_smartspim(force_update: bool = False) -> pd.DataFrame:
                 lambda x: x is not None and not isinstance(x, float) and any("SPIM" in m for m in x)
             )
         ]
-        raw_spim = raw_spim[~raw_spim["instrument_id"].str.contains("exa", case=False, na=False)]
+        raw_spim = raw_spim[raw_spim["instrument_id"].str.contains("smartspim", case=False, na=False)]
         raw_spim_names = list(raw_spim["name"].dropna())
 
         sd = source_data()
