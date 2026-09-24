@@ -95,6 +95,7 @@ def _build_rows(
     raw_to_stitched: dict[str, str | None],
     metadata: dict[str, dict],
     raw_ng_links: dict[str, str | None] | None = None,
+    cached_rows: dict[str, list[dict]] | None = None,
 ) -> list[dict]:
     """Build one row per (raw asset, channel) in long form.
 
@@ -103,6 +104,8 @@ def _build_rows(
     """
     if raw_ng_links is None:
         raw_ng_links = {}
+    if cached_rows is None:
+        cached_rows = {}
     rows = []
     for raw_name, stitched_name in raw_to_stitched.items():
         processed = stitched_name is not None
@@ -116,7 +119,15 @@ def _build_rows(
             data_processes = record.get("processing", {}).get("data_processes", []) or []
             processing_end_time = data_processes[-1].get("end_date_time", None) if data_processes else None
             stitch_link = _stitched_link(location) if location else None
-            channels = _list_channels(location) if location else []
+            cached_processed_rows = [
+                row for row in cached_rows.get(stitched_name, []) if row.get("channel")
+            ]
+            if cached_processed_rows:
+                channels = [row["channel"] for row in cached_processed_rows]
+            elif location:
+                channels = _list_channels(location)
+            else:
+                channels = []
 
             tissue_link = _alignment_tissue_link(location) if location else None
             ccf_link = _alignment_ccf_link(location) if location else None
@@ -244,10 +255,23 @@ def assets_smartspim(force_update: bool = False) -> pd.DataFrame:
             CacheLogMessage(
                 backend=registry.BACKEND.__class__.__name__,
                 table=registry.NAMES["smartspim"],
-                message=f"Fetched metadata for {len(metadata)} assets, fetching raw neuroglancer links from S3",
+                message=f"Fetched metadata for {len(metadata)} assets, resolving raw neuroglancer links",
             ).to_json()
         )
-        raw_ng_links = {name: _fetch_raw_ng_link(name) for name in raw_spim_names}
+        cached_rows_by_name: dict[str, list[dict]] = {}
+        cached_raw_links: dict[str, str] = {}
+        if not df.empty:
+            for row in df.to_dict("records"):
+                cached_rows_by_name.setdefault(row.get("name"), []).append(row)
+                raw_name = row.get("raw_name")
+                raw_link = row.get("raw_link")
+                if raw_name and raw_link:
+                    cached_raw_links.setdefault(raw_name, raw_link)
+
+        raw_ng_links = {
+            name: cached_raw_links[name] if name in cached_raw_links else _fetch_raw_ng_link(name)
+            for name in raw_spim_names
+        }
         logging.info(
             CacheLogMessage(
                 backend=registry.BACKEND.__class__.__name__,
@@ -255,7 +279,7 @@ def assets_smartspim(force_update: bool = False) -> pd.DataFrame:
                 message=f"Fetched {sum(v is not None for v in raw_ng_links.values())} raw neuroglancer links, building rows",
             ).to_json()
         )
-        rows = _build_rows(raw_to_stitched, metadata, raw_ng_links)
+        rows = _build_rows(raw_to_stitched, metadata, raw_ng_links, cached_rows_by_name)
         df = pd.DataFrame(rows)
 
         registry.BACKEND.write(registry.NAMES["smartspim"], df)
