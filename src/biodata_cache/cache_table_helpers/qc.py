@@ -1,5 +1,6 @@
 """Quality-control metrics flattened by raw-asset lineage."""
 
+import gc
 import json
 import logging
 from collections import defaultdict, deque
@@ -29,7 +30,19 @@ QC_METRIC_FIELDS = [
 # historical storage name and the key understood by the backends.
 QC_STORAGE_NAME = "qc"
 QC_FETCH_BATCH_SIZE = 50
+QC_TAG_STATUS_BUFFER_SIZE = 5000
 QC_FILTER = {"quality_control": {"$exists": True}}
+QC_IDENTITY_PROJECTION = {"_id": 1, "name": 1}
+QC_METADATA_PROJECTION = {
+    **QC_IDENTITY_PROJECTION,
+    "location": 1,
+    "_created": 1,
+    "acquisition.acquisition_start_time": 1,
+    "subject.subject_id": 1,
+    "data_description.modalities": 1,
+    "data_description.data_level": 1,
+    "data_description.source_data": 1,
+}
 QC_PROJECTION = {
     "_id": 1,
     "name": 1,
@@ -148,18 +161,29 @@ def _metadata_by_asset(basics_df: pd.DataFrame) -> dict[str, dict]:
     return {row["name"]: row for row in basics_df.to_dict("records") if row.get("name")}
 
 
-def _asset_time(asset_name: str, metadata: dict, source_df: pd.DataFrame) -> str:
-    """Return the best comparable timestamp for selecting a latest chain."""
+def _processing_times_by_asset(source_df: pd.DataFrame) -> dict[str, str]:
+    processing_times = {}
     if (
-        source_df is not None
-        and not source_df.empty
-        and "name" in source_df.columns
-        and "processing_time" in source_df.columns
+        source_df is None
+        or source_df.empty
+        or "name" not in source_df.columns
+        or "processing_time" not in source_df.columns
     ):
-        values = source_df.loc[source_df["name"] == asset_name, "processing_time"]
-        values = [str(value) for value in values.tolist() if value is not None and not pd.isna(value) and value != ""]
-        if values:
-            return max(values)
+        return processing_times
+
+    for asset_name, processing_time in source_df[["name", "processing_time"]].itertuples(index=False, name=None):
+        if not asset_name or processing_time is None or pd.isna(processing_time) or processing_time == "":
+            continue
+        value = str(processing_time)
+        if value > processing_times.get(asset_name, ""):
+            processing_times[asset_name] = value
+    return processing_times
+
+
+def _asset_time(asset_name: str, metadata: dict, processing_times: dict[str, str]) -> str:
+    """Return the best comparable timestamp for selecting a latest chain."""
+    if asset_name in processing_times:
+        return processing_times[asset_name]
     for field in ("created", "process_date", "acquisition_start_time"):
         value = metadata.get(field)
         if value is not None and not pd.isna(value):
@@ -254,7 +278,7 @@ def _select_terminal_chains(
     parents: dict[str, list[str]],
     children: dict[str, list[str]],
     metadata: dict,
-    source_df: pd.DataFrame,
+    processing_times: dict[str, str],
 ) -> tuple[set[str], dict[str, int]]:
     nodes = _descendants(root, children)
     leaves = [node for node in nodes if not any(child in nodes for child in children.get(node, []))]
@@ -269,7 +293,7 @@ def _select_terminal_chains(
         selected_leaves.append(
             max(
                 candidates,
-                key=lambda name: (_asset_time(name, metadata.get(name, {}), source_df), name),
+                key=lambda name: (_asset_time(name, metadata.get(name, {}), processing_times), name),
             )
         )
 
@@ -328,7 +352,11 @@ def _row_for_metric(
     }
 
 
-def _cache_tag_statuses(records: list[dict], default_subject_id: str | None = None) -> None:
+def _cache_tag_statuses(
+    records: list[dict],
+    default_subject_id: str | None = None,
+    buffered_rows: dict[str, list[dict]] | None = None,
+) -> int:
     """Keep the legacy tag-status cache available for downstream consumers."""
     by_subject: dict[str, list[dict]] = defaultdict(list)
     for record in records:
@@ -354,10 +382,97 @@ def _cache_tag_statuses(records: list[dict], default_subject_id: str | None = No
                     "timestamp": timestamp,
                 }
             )
+    row_count = 0
     for subject_id, rows in by_subject.items():
+        row_count += len(rows)
+        if buffered_rows is not None:
+            buffered_rows.setdefault(subject_id, []).extend(rows)
+        else:
+            tag_df = pd.DataFrame.from_records(rows)
+            tag_df["timestamp"] = pd.to_datetime(tag_df["timestamp"], utc=True)
+            registry.BACKEND.write(f"qc_tag_status/{subject_id}", tag_df)
+    return row_count
+
+
+def _flush_tag_statuses(
+    buffered_rows: dict[str, list[dict]],
+    chunk_indices: dict[str, int],
+    cleared_subjects: set[str],
+) -> None:
+    """Write buffered status rows without retaining the complete status table."""
+    for subject_id, rows in buffered_rows.items():
         tag_df = pd.DataFrame.from_records(rows)
         tag_df["timestamp"] = pd.to_datetime(tag_df["timestamp"], utc=True)
-        registry.BACKEND.write(f"qc_tag_status/{subject_id}", tag_df)
+        cache_key = f"qc_tag_status/{subject_id}"
+        if subject_id not in cleared_subjects:
+            registry.BACKEND.clear_partition(cache_key)
+            cleared_subjects.add(subject_id)
+        chunk_idx = chunk_indices.get(subject_id, 0)
+        registry.BACKEND.write_chunk(cache_key, tag_df, chunk_idx)
+        chunk_indices[subject_id] = chunk_idx + 1
+        del tag_df
+    buffered_rows.clear()
+
+
+def _build_qc_rows_for_root(
+    root: str,
+    records: list[dict],
+    metadata: dict[str, dict],
+    parents: dict[str, list[str]],
+    children: dict[str, list[str]],
+    processing_times: dict[str, str],
+) -> list[dict]:
+    records_by_name = {record.get("name"): record for record in records if record.get("name")}
+    selected_nodes, distances = _select_terminal_chains(root, parents, children, metadata, processing_times)
+    occurrences: dict[str, list[tuple[int, str, int, dict, dict]]] = defaultdict(list)
+    for asset_name in sorted(selected_nodes):
+        record = records_by_name.get(asset_name)
+        if not record:
+            continue
+        qc_data = record.get("quality_control", {}) or {}
+        for metric_index, metric in enumerate(qc_data.get("metrics", []) or []):
+            if not isinstance(metric, dict) or not metric.get("name"):
+                continue
+            occurrences[_metric_identity(metric)].append(
+                (distances.get(asset_name, 0), asset_name, metric_index, metric, record)
+            )
+
+    result = []
+    for candidates in occurrences.values():
+        origin = min(
+            candidates,
+            key=lambda item: (
+                item[0],
+                _asset_time(item[1], metadata.get(item[1], {}), processing_times),
+                item[1],
+                item[2],
+            ),
+        )
+        origin_distance, asset_name, metric_index, metric, record = origin
+        downstream = sorted(
+            {
+                candidate[1]
+                for candidate in candidates
+                if candidate[1] != asset_name and candidate[0] >= origin_distance
+            },
+            key=lambda name: (
+                distances.get(name, 0),
+                _asset_time(name, metadata.get(name, {}), processing_times),
+                name,
+            ),
+        )
+        result.append(
+            _row_for_metric(
+                metric,
+                metric_index,
+                asset_name,
+                root,
+                downstream,
+                metadata.get(asset_name, {}),
+                record,
+            )
+        )
+    return result
 
 
 def build_qc_rows(records: list[dict], basics_df: pd.DataFrame, source_df: pd.DataFrame) -> list[dict]:
@@ -367,114 +482,142 @@ def build_qc_rows(records: list[dict], basics_df: pd.DataFrame, source_df: pd.Da
     set. Every selected chain contributes metrics, but an inherited metric is
     represented by its earliest occurrence and carries the later asset names.
     """
-    records_by_name = {record.get("name"): record for record in records if record.get("name")}
     metadata = _metadata_by_asset(basics_df)
     parents = _source_mapping(source_df)
     children = _children_mapping(parents)
+    processing_times = _processing_times_by_asset(source_df)
     names = _all_assets(records, basics_df, parents)
 
     roots = []
+    seen_roots = set()
     for name in sorted(names):
         root = _raw_roots(name, parents)[0]
-        if root not in roots:
+        if root not in seen_roots:
             roots.append(root)
+            seen_roots.add(root)
 
     result = []
     for root in roots:
-        selected_nodes, distances = _select_terminal_chains(root, parents, children, metadata, source_df)
-        occurrences: dict[str, list[tuple[int, str, int, dict, dict]]] = defaultdict(list)
-        for asset_name in sorted(selected_nodes):
-            record = records_by_name.get(asset_name)
-            if not record:
-                continue
-            qc_data = record.get("quality_control", {}) or {}
-            for metric_index, metric in enumerate(qc_data.get("metrics", []) or []):
-                if not isinstance(metric, dict) or not metric.get("name"):
-                    continue
-                occurrences[_metric_identity(metric)].append(
-                    (distances.get(asset_name, 0), asset_name, metric_index, metric, record)
-                )
-
-        for candidates in occurrences.values():
-            origin = min(
-                candidates,
-                key=lambda item: (
-                    item[0],
-                    _asset_time(item[1], metadata.get(item[1], {}), source_df),
-                    item[1],
-                    item[2],
-                ),
-            )
-            origin_distance, asset_name, metric_index, metric, record = origin
-            downstream = sorted(
-                {
-                    candidate[1]
-                    for candidate in candidates
-                    if candidate[1] != asset_name and candidate[0] >= origin_distance
-                },
-                key=lambda name: (distances.get(name, 0), _asset_time(name, metadata.get(name, {}), source_df), name),
-            )
-            result.append(
-                _row_for_metric(
-                    metric,
-                    metric_index,
-                    asset_name,
-                    root,
-                    downstream,
-                    metadata.get(asset_name, {}),
-                    record,
-                )
-            )
+        result.extend(_build_qc_rows_for_root(root, records, metadata, parents, children, processing_times))
     return result
 
 
-def _cached_lineage_inputs(records: list[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
-    basics_df = registry.BACKEND.read(registry.NAMES["basics"])
+def _cached_lineage_inputs(
+    records: list[dict], basics_df: pd.DataFrame, source_df: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     if basics_df.empty:
         basics_df = _record_basics(records)
-    source_df = registry.BACKEND.read(registry.NAMES["d2r"])
     if source_df.empty:
         source_df = _record_sources(records)
     return basics_df, source_df
 
 
-def _fetch_qc_records(client) -> list[dict]:
-    """Fetch QC-bearing records in bounded batches instead of one huge response."""
+def _qc_roots_and_record_ids(
+    index_records: list[dict], basics_df: pd.DataFrame, parents: dict[str, list[str]]
+) -> tuple[list[str], dict[str, list[object]], list[object]]:
+    names = _all_assets(index_records, basics_df, parents)
+    roots = []
+    seen_roots = set()
+    for name in sorted(names):
+        root = _raw_roots(name, parents)[0]
+        if root not in seen_roots:
+            roots.append(root)
+            seen_roots.add(root)
+
+    record_ids_by_root: dict[str, list[object]] = defaultdict(list)
+    orphan_record_ids = []
+    seen_record_ids = set()
+    for record in index_records:
+        record_id = record.get("_id")
+        if not record_id or record_id in seen_record_ids:
+            continue
+        seen_record_ids.add(record_id)
+        name = record.get("name")
+        if not name:
+            orphan_record_ids.append(record_id)
+            continue
+        record_roots = _raw_roots(name, parents)
+        if not record_roots:
+            orphan_record_ids.append(record_id)
+            continue
+        for root in record_roots:
+            if root not in seen_roots:
+                roots.append(root)
+                seen_roots.add(root)
+            record_ids_by_root[root].append(record_id)
+    return roots, record_ids_by_root, orphan_record_ids
+
+
+def _qc_root_groups(roots: list[str], record_ids_by_root: dict[str, list[object]]):
+    grouped_roots = []
+    grouped_ids = []
+    grouped_id_set = set()
+    for root in roots:
+        root_record_ids = record_ids_by_root.pop(root, [])
+        if not root_record_ids:
+            continue
+        new_ids = [record_id for record_id in root_record_ids if record_id not in grouped_id_set]
+        if grouped_roots and len(grouped_ids) + len(new_ids) > QC_FETCH_BATCH_SIZE:
+            yield grouped_roots, grouped_ids
+            grouped_roots = []
+            grouped_ids = []
+            grouped_id_set = set()
+            new_ids = list(dict.fromkeys(root_record_ids))
+        grouped_roots.append((root, root_record_ids))
+        for record_id in new_ids:
+            grouped_ids.append(record_id)
+            grouped_id_set.add(record_id)
+        if len(grouped_ids) >= QC_FETCH_BATCH_SIZE:
+            yield grouped_roots, grouped_ids
+            grouped_roots = []
+            grouped_ids = []
+            grouped_id_set = set()
+    if grouped_roots:
+        yield grouped_roots, grouped_ids
+
+
+def _fetch_qc_record_index(client, projection: dict) -> list[dict]:
+    """Fetch the lightweight QC record index used to group work by raw root."""
     logging.info(
         CacheLogMessage(
             backend=registry.BACKEND.__class__.__name__,
             table=registry.NAMES["qc"],
-            message="Fetching QC record IDs",
+            message="Fetching QC record index",
         ).to_json()
     )
-    id_records = client.retrieve_docdb_records(
+    return client.retrieve_docdb_records(
         filter_query=QC_FILTER,
-        projection={"_id": 1},
+        projection=projection,
         limit=0,
     )
-    record_ids = list(dict.fromkeys(record.get("_id") for record in id_records if record.get("_id")))
-    if not record_ids:
-        return []
 
-    records = []
+
+def _fetch_qc_records(client, record_ids: list[object], on_batch=None, collect_records: bool = True) -> list[dict]:
+    """Fetch one raw root's QC records in bounded batches."""
+    records = [] if collect_records else None
     total = len(record_ids)
+    fetched = 0
     for start in range(0, total, QC_FETCH_BATCH_SIZE):
         batch_ids = record_ids[start : start + QC_FETCH_BATCH_SIZE]
-        records.extend(
-            client.retrieve_docdb_records(
-                filter_query={"_id": {"$in": batch_ids}},
-                projection=QC_PROJECTION,
-                limit=len(batch_ids),
-            )
+        batch_records = client.retrieve_docdb_records(
+            filter_query={"_id": {"$in": batch_ids}},
+            projection=QC_PROJECTION,
+            limit=len(batch_ids),
         )
+        if on_batch is not None:
+            on_batch(batch_records)
+        if records is not None:
+            records.extend(batch_records)
+        fetched += len(batch_records)
         logging.info(
             CacheLogMessage(
                 backend=registry.BACKEND.__class__.__name__,
                 table=registry.NAMES["qc"],
-                message=f"Fetched {len(records)}/{total} QC records",
+                message=f"Fetched {fetched}/{total} QC records for one raw root",
             ).to_json()
         )
-    return records
+        del batch_records
+    return records if records is not None else []
 
 
 def _fetch_all_qc() -> pd.DataFrame:
