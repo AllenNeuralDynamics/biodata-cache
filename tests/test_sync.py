@@ -177,7 +177,7 @@ def test_qc_job_called_once_for_all_raw_assets(mock_registry, mock_backend):
 
     run_sync_job("qc")
 
-    reg["quality_control"].assert_called_once_with(force_update=True)
+    reg["quality_control"].assert_called_once_with(force_update=True, return_df=False)
     reg["asset_basics"].assert_not_called()
     assert mock_backend.put_registry_fragment.call_args[0][0] == "quality_control"
 
@@ -191,7 +191,7 @@ def test_qc_job_no_subjects_still_publishes(mock_registry, mock_backend):
 
     run_sync_job("qc")
 
-    reg["quality_control"].assert_called_once_with(force_update=True)
+    reg["quality_control"].assert_called_once_with(force_update=True, return_df=False)
     mock_backend.put_registry_fragment.assert_called_once()
 
 

@@ -150,26 +150,50 @@ def test_qc_rows_preserve_full_metric_json_for_browser_rendering():
     assert row["value"] == '{"nested": [1, 2]}'
 
 
+@patch("aind_data_access_api.document_db.MetadataDbClient")
+def test_qc_write_only_refresh_writes_each_raw_partition(mock_client_class):
+    records = [
+        _asset("raw-a", [_metric("metric-a")], data_level="raw"),
+        _asset("raw-b", [_metric("metric-b")], data_level="raw"),
+    ]
+    records_by_id = {record["_id"]: record for record in records}
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+
+    def retrieve(*, filter_query, projection, limit):
+        if filter_query == {"quality_control": {"$exists": True}}:
+            return records
+        requested_ids = filter_query["_id"]["$in"]
+        return [records_by_id[record_id] for record_id in requested_ids]
+
+    mock_client.retrieve_docdb_records.side_effect = retrieve
+
+    result = qc(force_update=True, return_df=False)
+
+    assert result.empty
+    assert registry.BACKEND.read("qc/raw-a")["name"].tolist() == ["metric-a"]
+    assert registry.BACKEND.read("qc/raw-b")["name"].tolist() == ["metric-b"]
+
+
 def test_fetch_qc_records_uses_50_record_batches():
     records = [{"_id": f"asset-{index}", "name": f"asset-{index}"} for index in range(101)]
+    record_ids = [record["_id"] for record in records]
     client = MagicMock()
 
     def retrieve(*, filter_query, projection, limit):
-        if projection == {"_id": 1}:
-            return [{"_id": record["_id"]} for record in records]
         ids = set(filter_query["_id"]["$in"])
         assert limit <= 50
         return [record for record in records if record["_id"] in ids]
 
     client.retrieve_docdb_records.side_effect = retrieve
 
-    fetched = _fetch_qc_records(client)
+    fetched = _fetch_qc_records(client, record_ids)
 
     assert len(fetched) == len(records)
     calls = client.retrieve_docdb_records.call_args_list
-    assert len(calls) == 4  # one ID query plus three data batches
-    assert [call.kwargs["limit"] for call in calls[1:]] == [50, 50, 1]
-    assert all(len(call.kwargs["filter_query"]["_id"]["$in"]) <= 50 for call in calls[1:])
+    assert len(calls) == 3
+    assert [call.kwargs["limit"] for call in calls] == [50, 50, 1]
+    assert all(len(call.kwargs["filter_query"]["_id"]["$in"]) <= 50 for call in calls)
 
 
 @patch("aind_data_access_api.document_db.MetadataDbClient")

@@ -141,7 +141,7 @@ def _job_storage_lens() -> None:
 def _job_qc() -> None:
     """Build the raw-asset-partitioned quality_control table."""
     qc_fn = TABLE_REGISTRY[NAMES["qc"]]
-    qc_fn(force_update=True)
+    qc_fn(force_update=True, return_df=False)
     publish_registry_fragment(NAMES["qc"])
 
 

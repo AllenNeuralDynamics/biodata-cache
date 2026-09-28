@@ -224,9 +224,13 @@ def _record_sources(records: list[dict]) -> pd.DataFrame:
 
 
 def _all_assets(records: list[dict], basics_df: pd.DataFrame, parents: dict[str, list[str]]) -> set[str]:
-    names = {record.get("name") for record in records if record.get("name")}
+    names: set[str] = set()
+    for record in records:
+        name = record.get("name")
+        if isinstance(name, str) and name:
+            names.add(name)
     if basics_df is not None and "name" in basics_df.columns:
-        names.update(name for name in basics_df["name"].dropna().tolist())
+        names.update(name for name in basics_df["name"].dropna().tolist() if isinstance(name, str) and name)
     names.update(parents)
     for sources in parents.values():
         names.update(sources)
@@ -502,11 +506,31 @@ def build_qc_rows(records: list[dict], basics_df: pd.DataFrame, source_df: pd.Da
     return result
 
 
-def _cached_lineage_inputs(
-    records: list[dict], basics_df: pd.DataFrame, source_df: pd.DataFrame
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _cached_lineage_inputs(records: list[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    basics_result = registry.BACKEND.read_filtered(
+        registry.NAMES["basics"],
+        columns=[
+            "name",
+            "location",
+            "data_level",
+            "modalities",
+            "subject_id",
+            "created",
+            "process_date",
+            "acquisition_start_time",
+        ],
+        limit=None,
+    )
+    basics_df = basics_result[0] if isinstance(basics_result, tuple) else basics_result
     if basics_df.empty:
         basics_df = _record_basics(records)
+
+    source_result = registry.BACKEND.read_filtered(
+        registry.NAMES["d2r"],
+        columns=["name", "source_data", "processing_time"],
+        limit=None,
+    )
+    source_df = source_result[0] if isinstance(source_result, tuple) else source_result
     if source_df.empty:
         source_df = _record_sources(records)
     return basics_df, source_df
@@ -620,7 +644,7 @@ def _fetch_qc_records(client, record_ids: list[object], on_batch=None, collect_r
     return records if records is not None else []
 
 
-def _fetch_all_qc() -> pd.DataFrame:
+def _fetch_all_qc(return_df: bool = True) -> pd.DataFrame:
     setup_logging()
     logging.info(
         CacheLogMessage(
@@ -633,13 +657,101 @@ def _fetch_all_qc() -> pd.DataFrame:
     from aind_data_access_api.document_db import MetadataDbClient
 
     client = MetadataDbClient(host=registry.API_GATEWAY_HOST, version="v2")
-    records = _fetch_qc_records(client)
-    if not records:
+    index_records = _fetch_qc_record_index(client, QC_METADATA_PROJECTION)
+    if not index_records:
+        logging.warning(
+            CacheLogMessage(
+                backend=registry.BACKEND.__class__.__name__,
+                table=registry.NAMES["qc"],
+                message="No quality_control records found",
+            ).to_json()
+        )
         return pd.DataFrame()
 
-    basics_df, source_df = _cached_lineage_inputs(records)
-    rows = build_qc_rows(records, basics_df, source_df)
-    if not rows:
+    basics_df, source_df = _cached_lineage_inputs(index_records)
+    metadata = _metadata_by_asset(basics_df)
+    parents = _source_mapping(source_df)
+    children = _children_mapping(parents)
+    processing_times = _processing_times_by_asset(source_df)
+    roots, record_ids_by_root, orphan_record_ids = _qc_roots_and_record_ids(index_records, basics_df, parents)
+    del basics_df, source_df, index_records
+
+    result_rows = [] if return_df else None
+    total_rows = 0
+    buffered_tag_rows: dict[str, list[dict]] = defaultdict(list)
+    tag_chunk_indices: dict[str, int] = {}
+    cleared_tag_subjects: set[str] = set()
+    tag_status_record_ids: set[object] = set()
+    buffered_tag_row_count = 0
+
+    def cache_tag_batch(batch_records: list[dict]) -> None:
+        nonlocal buffered_tag_row_count
+        unique_records = []
+        for record in batch_records:
+            record_id = record.get("_id")
+            if record_id is not None:
+                if record_id in tag_status_record_ids:
+                    continue
+                tag_status_record_ids.add(record_id)
+            unique_records.append(record)
+        buffered_tag_row_count += _cache_tag_statuses(unique_records, buffered_rows=buffered_tag_rows)
+        if buffered_tag_row_count >= QC_TAG_STATUS_BUFFER_SIZE:
+            _flush_tag_statuses(buffered_tag_rows, tag_chunk_indices, cleared_tag_subjects)
+            buffered_tag_row_count = 0
+        del unique_records
+
+    for root_group, group_ids in _qc_root_groups(roots, record_ids_by_root):
+        fetched_records = _fetch_qc_records(client, group_ids, on_batch=cache_tag_batch)
+        records_by_id = {record.get("_id"): record for record in fetched_records if record.get("_id") is not None}
+        del fetched_records
+
+        remaining_uses: dict[object, int] = defaultdict(int)
+        for _, root_record_ids in root_group:
+            for record_id in dict.fromkeys(root_record_ids):
+                remaining_uses[record_id] += 1
+
+        for root, root_record_ids in root_group:
+            root_records = [
+                records_by_id[record_id]
+                for record_id in dict.fromkeys(root_record_ids)
+                if record_id in records_by_id
+            ]
+            rows = _build_qc_rows_for_root(root, root_records, metadata, parents, children, processing_times)
+            cache_key = f"{QC_STORAGE_NAME}/{root}"
+            root_df = None
+            if rows:
+                root_df = pd.DataFrame.from_records(rows)
+                root_df["timestamp"] = pd.to_datetime(root_df["timestamp"], utc=True)
+                registry.BACKEND.clear_partition(cache_key)
+                registry.BACKEND.write(cache_key, root_df)
+                total_rows += len(rows)
+                if result_rows is not None:
+                    result_rows.extend(rows)
+            else:
+                registry.BACKEND.clear_partition(cache_key)
+
+            for record_id in dict.fromkeys(root_record_ids):
+                remaining_uses[record_id] -= 1
+                if remaining_uses[record_id] == 0:
+                    records_by_id.pop(record_id, None)
+            del root_records, rows, root_df
+
+        del records_by_id, remaining_uses, root_group, group_ids
+        gc.collect()
+
+    for start in range(0, len(orphan_record_ids), QC_FETCH_BATCH_SIZE):
+        orphan_batch = orphan_record_ids[start : start + QC_FETCH_BATCH_SIZE]
+        _fetch_qc_records(client, orphan_batch, on_batch=cache_tag_batch, collect_records=False)
+        del orphan_batch
+
+    if buffered_tag_rows:
+        _flush_tag_statuses(buffered_tag_rows, tag_chunk_indices, cleared_tag_subjects)
+
+    del record_ids_by_root, orphan_record_ids, roots, metadata, parents, children, processing_times
+    del tag_status_record_ids, tag_chunk_indices, cleared_tag_subjects, buffered_tag_rows
+    gc.collect()
+
+    if total_rows == 0:
         logging.warning(
             CacheLogMessage(
                 backend=registry.BACKEND.__class__.__name__,
@@ -647,13 +759,13 @@ def _fetch_all_qc() -> pd.DataFrame:
                 message="No quality_control metrics found",
             ).to_json()
         )
-        return pd.DataFrame()
 
-    df = pd.DataFrame.from_records(rows)
+    if result_rows is None or not result_rows:
+        return pd.DataFrame()
+    df = pd.DataFrame.from_records(result_rows)
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-    for raw_asset_name, partition in df.groupby("raw_asset_name", sort=False):
-        registry.BACKEND.write(f"{QC_STORAGE_NAME}/{raw_asset_name}", partition.reset_index(drop=True))
-    _cache_tag_statuses(records)
+    del result_rows
+    gc.collect()
     return df
 
 
@@ -663,6 +775,7 @@ def qc(
     asset_names: str | list[str] | None = None,
     force_update: bool = False,
     lazy: bool = False,
+    return_df: bool = True,
 ) -> pd.DataFrame | str:
     """Read a raw-asset QC partition, rebuilding all partitions when requested.
 
@@ -670,12 +783,12 @@ def qc(
     assets. The published table is partitioned by ``raw_asset_name``.
     """
     if raw_asset_name is None:
-        df = _fetch_all_qc() if force_update else pd.DataFrame()
+        df = _fetch_all_qc(return_df=return_df) if force_update else pd.DataFrame()
         return df
 
     cache_key = f"{QC_STORAGE_NAME}/{raw_asset_name}"
     if force_update:
-        _fetch_all_qc()
+        _fetch_all_qc(return_df=False)
     df = registry.BACKEND.read(cache_key)
     if asset_names is not None and not df.empty and "asset_name" in df.columns:
         names = [asset_names] if isinstance(asset_names, str) else asset_names
