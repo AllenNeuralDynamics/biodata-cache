@@ -117,6 +117,16 @@ TABLE_SPECS = (
         sync_job="smartspim",
     ),
     TableSpec(
+        key="smartspim_fiber_ccf",
+        name="platform_smartspim_fiber_ccf",
+        description="Fiber probe tip CCF locations annotated on stitched SmartSPIM assets via QC",
+        table_type=CacheTableType.metadata,
+        columns_factory=(
+            "biodata_cache.cache_table_helpers.platform_smartspim_fiber_ccf.platform_smartspim_fiber_ccf_columns"
+        ),
+        sync_job="smartspim",
+    ),
+    TableSpec(
         key="exaspim",
         name="platform_exaspim",
         description="ExaSPIM assets including processing status and neuroglancer links",

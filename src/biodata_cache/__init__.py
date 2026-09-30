@@ -45,6 +45,9 @@ from biodata_cache.cache_table_helpers.platform_mouselight import platform_mouse
 from biodata_cache.cache_table_helpers.platform_pophys import platform_pophys  # noqa: F401
 from biodata_cache.cache_table_helpers.platform_qc import platform_qc  # noqa: F401
 from biodata_cache.cache_table_helpers.platform_smartspim import assets_smartspim  # noqa: F401
+from biodata_cache.cache_table_helpers.platform_smartspim_fiber_ccf import (  # noqa: F401
+    platform_smartspim_fiber_ccf,
+)
 from biodata_cache.cache_table_helpers.platform_video_frame_times import platform_video_frame_times  # noqa: F401
 from biodata_cache.cache_table_helpers.platform_visual_coding_ophys import (  # noqa: F401
     platform_visual_coding_ophys,
