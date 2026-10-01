@@ -28,6 +28,7 @@ dependencies = [
 [project.optional-dependencies]
 sync = [
     'aind-data-access-api[docdb]>=1.10.0',
+    'codeocean>=0.16.0,<0.17',
     'aind-dynamic-foraging-database',
     'sqlalchemy',
     'psycopg2-binary',
