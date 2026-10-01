@@ -15,6 +15,7 @@ from biodata_cache.sync import (
     run_sync_job,
     update_all_tables,
 )
+from biodata_cache.table_specs import TABLE_SPECS
 
 
 def _make_registry(basics_df=None, sessions_df=None):
@@ -521,7 +522,7 @@ def test_update_all_tables_propagates_exceptions(mock_registry, mock_backend):
 def test_publish_cache_registry_writes_all_table_fragments(mock_backend):
     mock_backend.get_location.return_value = "s3://bucket/path"
     publish_cache_registry()
-    assert mock_backend.put_registry_fragment.call_count == 45
+    assert mock_backend.put_registry_fragment.call_count == len(TABLE_SPECS)
 
 
 @patch("biodata_cache.sync.BACKEND")
