@@ -8,7 +8,9 @@ from biodata_cache.cache_table_helpers.record_consistency.framework import FAIL,
 class OpenDataPrefixMissingDocDbV2(Check):
     """Fail top-level aind-open-data prefixes that no DocDB v2 record points to."""
 
-    description = "Fails every top-level aind-open-data prefix that no DocDB v2 record's `location` points to."
+    description = (
+        "Fails top-level aind-open-data prefixes whose S3 URI is not the 'location' field of any DocDB v2 record."
+    )
     source = "aind_open_data_prefixes"
     needs = ("docdb_v2",)
     compares_across_records = True
