@@ -8,7 +8,7 @@ from biodata_cache.cache_table_helpers.record_consistency.framework import FAIL,
 class V1NameMissingInV2(Check):
     """Fail v1 records whose exact name matches no v2 record."""
 
-    description = "Fails every DocDB v1 record whose non-empty `name` has zero exact matches in DocDB v2."
+    description = "Fails DocDB v1 records whose 'name' field does not exactly match any DocDB v2 record's 'name' field."
     source = "docdb_v1"
     needs = ("docdb_v2",)
     compares_across_records = True
