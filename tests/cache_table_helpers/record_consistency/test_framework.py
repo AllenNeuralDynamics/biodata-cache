@@ -12,6 +12,8 @@ from biodata_cache.cache_table_helpers.record_consistency.framework import (
     build_snapshot,
     record_consistency_checks,
     record_consistency_checks_columns,
+    record_consistency_results,
+    record_consistency_results_columns,
 )
 
 SOURCE_MODULE = """
@@ -67,6 +69,15 @@ def fake(isolated):
         ["id-3", "beta", "s3://bucket/beta", None],
     ]
     return source
+
+
+def _run(previous=(None, None), force_full_rerun=False):
+    results, checks = previous
+    return build_snapshot(
+        pd.DataFrame() if results is None else results,
+        pd.DataFrame() if checks is None else checks,
+        force_full_rerun=force_full_rerun,
+    )
 
 
 def _evaluated(module):
@@ -127,38 +138,46 @@ def test_unknown_sources_are_rejected_before_loading(isolated, fake):
     isolated("needs_missing", CROSS_CHECK.replace('source = "fake"', 'source = "fake"\n        needs = ("missing",)'))
 
     with pytest.raises(ValueError, match="unknown sources"):
-        build_snapshot(pd.DataFrame())
+        _run()
     assert fake.fetches == 0
 
 
 # --- snapshot ---
 
 
-def test_snapshot_rows_carry_record_and_check_metadata(isolated, fake):
+def test_results_and_checks_tables_describe_the_same_run(isolated, fake):
     isolated("shared_name", CROSS_CHECK)
 
-    snapshot = build_snapshot(pd.DataFrame())
+    results, checks = _run()
 
-    assert list(snapshot.columns) == [column.name for column in record_consistency_checks_columns()]
-    assert snapshot[["record_id", "status"]].values.tolist() == [["id-1", "pass"], ["id-2", "fail"], ["id-3", "fail"]]
-    assert set(snapshot["record_kind"]) == {"fake_kind"}
-    assert set(snapshot["check_description"]) == {"Fails records that share a name."}
-    assert snapshot["checked_at"].nunique() == 1
+    assert list(results.columns) == [column.name for column in record_consistency_results_columns()]
+    assert list(checks.columns) == [column.name for column in record_consistency_checks_columns()]
+    assert results[["record_id", "status"]].values.tolist() == [["id-1", "pass"], ["id-2", "fail"], ["id-3", "fail"]]
+    assert set(results["record_kind"]) == {"fake_kind"}
+    summary = checks.iloc[0].to_dict()
+    assert summary["check_key"] == "shared_name"
+    assert summary["check_description"] == "Fails records that share a name."
+    assert summary["source"] == "fake"
+    assert (summary["evaluated_count"], summary["failed_count"], summary["reused_count"]) == (3, 2, 0)
+    assert summary["check_eval_seconds"] >= 0 and summary["source_load_seconds"] >= 0
+    assert set(results["checked_at"]) == {summary["checked_at"]}
 
 
 def test_each_source_loads_once_for_every_check(isolated, fake):
     isolated("shared_name", CROSS_CHECK)
     isolated("name_starts_with_a", LOCAL_CHECK)
 
-    snapshot = build_snapshot(pd.DataFrame())
+    results, checks = _run()
 
     assert fake.fetches == 1
-    assert snapshot["check_key"].tolist() == ["name_starts_with_a"] * 3 + ["shared_name"] * 3
+    assert results["check_key"].tolist() == ["name_starts_with_a"] * 3 + ["shared_name"] * 3
+    assert checks["check_key"].tolist() == ["name_starts_with_a", "shared_name"]
+    assert checks["source_load_seconds"].nunique() == 1
 
 
 def test_unchanged_records_reuse_results_and_changed_records_are_rechecked(isolated, fake):
     module = isolated("name_starts_with_a", LOCAL_CHECK)
-    first = build_snapshot(pd.DataFrame())
+    first = _run()
     fake.rows = [
         ["id-1", "alpha", "s3://bucket/alpha", "t1"],
         ["id-2", "apple", None, "t2"],
@@ -166,57 +185,70 @@ def test_unchanged_records_reuse_results_and_changed_records_are_rechecked(isola
         ["id-4", "beta-2", None, "t1"],
     ]
 
-    second = build_snapshot(first)
+    results, checks = _run(first)
 
     assert _evaluated(module)[-1] == ["id-2", "id-3", "id-4"]
-    assert second.set_index("record_id")["status"].to_dict() == {
+    assert results.set_index("record_id")["status"].to_dict() == {
         "id-1": "pass",
         "id-2": "pass",
         "id-3": "fail",
         "id-4": "fail",
     }
+    assert (checks.loc[0, "evaluated_count"], checks.loc[0, "reused_count"]) == (4, 1)
 
 
 def test_deleted_records_leave_the_snapshot(isolated, fake):
     isolated("name_starts_with_a", LOCAL_CHECK)
-    first = build_snapshot(pd.DataFrame())
+    first = _run()
     fake.rows = fake.rows[:1]
 
-    assert build_snapshot(first)["record_id"].tolist() == ["id-1"]
+    assert _run(first)[0]["record_id"].tolist() == ["id-1"]
 
 
 def test_changed_check_code_reevaluates_every_record(isolated, fake):
     module = isolated("name_starts_with_a", LOCAL_CHECK)
-    first = build_snapshot(pd.DataFrame())
-    first["check_hash"] = "older-code"
+    results, checks = _run()
+    checks["check_hash"] = "older-code"
 
-    build_snapshot(first)
+    _run((results, checks))
+
+    assert _evaluated(module)[-1] == ["id-1", "id-2", "id-3"]
+
+
+def test_missing_checks_table_reevaluates_every_record(isolated, fake):
+    module = isolated("name_starts_with_a", LOCAL_CHECK)
+    results, _ = _run()
+
+    _run((results, None))
 
     assert _evaluated(module)[-1] == ["id-1", "id-2", "id-3"]
 
 
 def test_force_full_rerun_reevaluates_every_record(isolated, fake):
     module = isolated("name_starts_with_a", LOCAL_CHECK)
-    first = build_snapshot(pd.DataFrame())
+    first = _run()
 
-    build_snapshot(first, force_full_rerun=True)
+    _run(first, force_full_rerun=True)
 
     assert _evaluated(module)[-1] == ["id-1", "id-2", "id-3"]
 
 
 def test_checks_that_compare_across_records_never_reuse_results(isolated, fake):
     isolated("shared_name", CROSS_CHECK)
-    first = build_snapshot(pd.DataFrame())
+    first = _run()
     fake.rows = [row for row in fake.rows if row[0] != "id-3"]
 
-    assert build_snapshot(first).set_index("record_id")["status"].to_dict() == {"id-1": "pass", "id-2": "pass"}
+    results, checks = _run(first)
+
+    assert results.set_index("record_id")["status"].to_dict() == {"id-1": "pass", "id-2": "pass"}
+    assert checks.loc[0, "reused_count"] == 0
 
 
 def test_a_check_must_return_one_status_per_record(isolated, fake):
     isolated("name_starts_with_a", LOCAL_CHECK.replace("for record in records]", "for record in records][:1]"))
 
     with pytest.raises(ValueError, match="for each record"):
-        build_snapshot(pd.DataFrame())
+        _run()
 
 
 def test_a_source_without_records_fails_the_snapshot(isolated, fake):
@@ -224,27 +256,40 @@ def test_a_source_without_records_fails_the_snapshot(isolated, fake):
     fake.rows = [[None, "no-id", None, None]]
 
     with pytest.raises(ValueError, match="no records"):
-        build_snapshot(pd.DataFrame())
+        _run()
 
 
-# --- record_consistency_checks ---
+# --- registered tables ---
 
 
-def test_record_consistency_checks_writes_and_then_serves_the_snapshot(isolated, fake):
+def test_record_consistency_results_writes_both_tables_and_then_serves_them(isolated, fake):
     isolated("name_starts_with_a", LOCAL_CHECK)
-    table = registry.NAMES["record_consistency_checks"]
+    results_table = registry.NAMES["record_consistency_results"]
+    checks_table = registry.NAMES["record_consistency_checks"]
 
-    snapshot = record_consistency_checks(force_update=True)
+    results = record_consistency_results(force_update=True)
 
-    pd.testing.assert_frame_equal(registry.BACKEND.read(table), snapshot)
-    assert record_consistency_checks() is registry.BACKEND.read(table)
+    pd.testing.assert_frame_equal(registry.BACKEND.read(results_table), results)
+    assert record_consistency_results() is registry.BACKEND.read(results_table)
+    assert record_consistency_checks() is registry.BACKEND.read(checks_table)
+    assert record_consistency_checks()["check_key"].tolist() == ["name_starts_with_a"]
 
 
-def test_record_consistency_checks_writes_nothing_when_a_source_fails(isolated, fake):
+def test_record_consistency_checks_builds_the_snapshot_when_absent(isolated, fake):
+    isolated("name_starts_with_a", LOCAL_CHECK)
+
+    checks = record_consistency_checks()
+
+    assert checks["check_key"].tolist() == ["name_starts_with_a"]
+    assert not registry.BACKEND.read(registry.NAMES["record_consistency_results"]).empty
+
+
+def test_a_failed_run_writes_neither_table(isolated, fake):
     isolated("name_starts_with_a", LOCAL_CHECK)
     fake.rows = []
 
     with pytest.raises(ValueError):
-        record_consistency_checks(force_update=True)
+        record_consistency_results(force_update=True)
 
+    assert registry.BACKEND.read(registry.NAMES["record_consistency_results"]).empty
     assert registry.BACKEND.read(registry.NAMES["record_consistency_checks"]).empty

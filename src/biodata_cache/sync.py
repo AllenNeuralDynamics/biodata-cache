@@ -415,8 +415,9 @@ def _job_time_to_qc() -> None:
 
 
 def _job_record_consistency_checks() -> None:
-    """Build the record-consistency checks table."""
-    TABLE_REGISTRY[NAMES["record_consistency_checks"]](force_update=True)
+    """Build the record-consistency results and checks tables."""
+    TABLE_REGISTRY[NAMES["record_consistency_results"]](force_update=True)
+    publish_registry_fragment(NAMES["record_consistency_results"])
     publish_registry_fragment(NAMES["record_consistency_checks"])
 
 

@@ -1,22 +1,27 @@
 ---
 name: record-consistency
-description: Add or change record-consistency checks and sources in biodata-cache, or change the record_consistency_checks table. Use when asked to add a consistency check (duplicates, missing counterparts, S3 vs DocDB coverage, per-record validation), add a record source, change how unchanged records are skipped, or when working in src/biodata_cache/cache_table_helpers/record_consistency/.
+description: Add or change record-consistency checks and sources in biodata-cache, or change the record_consistency_results and record_consistency_checks tables. Use when asked to add a consistency check (duplicates, missing counterparts, S3 vs DocDB coverage, per-record validation), add a record source, change how unchanged records are skipped, or when working in src/biodata_cache/cache_table_helpers/record_consistency/.
 ---
 
 # Record-consistency checks
 
-## What the table is
+## What the tables are
 
-`record_consistency_checks` is a snapshot of live consistency state: one row per
-evaluated record per check, rebuilt by the `record_consistency_checks` sync job.
-It keeps no history. Every row says whether one record currently passes one
-check, and carries that check's metadata so consumers (the Zombie
-`/record-consistency` page) read this one table and nothing else.
+The `record_consistency_checks` sync job writes one snapshot of live consistency
+state as two tables:
+
+- `record_consistency_results` — one row per evaluated record per check: whether
+  that record currently passes that check.
+- `record_consistency_checks` — one row per check: its description, source link,
+  hash, counts, and timings for the run.
+
+Neither keeps history. Both carry the same `checked_at`, so consumers (the Zombie
+`/record-consistency` page) can tell whether they come from the same run.
 
 The code lives in `src/biodata_cache/cache_table_helpers/record_consistency/`:
 
 - `framework.py` — `Source` and `Check` base classes, their registries, reuse of
-  unchanged results, the snapshot builder, and the table's column definitions.
+  unchanged results, the snapshot builder, and both tables' column definitions.
 - `sources.py` — record sources.
 - `checks/` — one module per check.
 
@@ -25,7 +30,7 @@ The code lives in `src/biodata_cache/cache_table_helpers/record_consistency/`:
 | Term | Meaning |
 |---|---|
 | Check | A subclass of `Check` that returns `pass` or `fail` for each record of one source. Pure: no I/O. |
-| Check key | The check module's filename, e.g. `docdb_duplicate_name_v2`. The single identifier for the check in the table, the page, and reuse. |
+| Check key | The check module's filename, e.g. `docdb_duplicate_name_v2`. The single identifier for the check in both tables, the page, and reuse. |
 | Check hash | First 12 hex characters of the SHA-256 of the check module's source. Changes whenever the module changes; gates reuse. |
 | Check description | The check class's `description` string literal, shown on the page. Starts with "Fails". |
 | Check source URL | Link to the check class in the tagged biodata-cache release that produced the snapshot. |
@@ -34,18 +39,17 @@ The code lives in `src/biodata_cache/cache_table_helpers/record_consistency/`:
 | Record ID | The record's identifier in its source system: a DocDB `_id`, or an S3 URI. |
 | Record last modified | The record's last-modified timestamp in its source system when it was checked; null when the source has none. |
 | `compares_across_records` | True when a record's result can change because a *different* record changed (duplicate names, missing counterparts). Such results are never reused. |
-| Reuse | Carrying a previous result forward without re-evaluating it. Only for checks that do not compare across records, and only when record ID, record last modified, and check hash all match the previous snapshot. |
+| Reuse | Carrying a previous result forward without re-evaluating it. Only for checks that do not compare across records, and only when record ID and record last modified match the previous results and the check hash matches the previous checks table. |
 | Snapshot | One complete run's output, which replaces the previous one. |
 | Cold run | A run with no usable previous snapshot (first run, new cache version folder, changed columns, or `force_full_rerun`); evaluates everything. |
 
 ## Table columns
 
+`record_consistency_results`, sorted by `(check_key, name, record_id)`:
+
 | Column | Value |
 |---|---|
-| `check_key` | Check module filename |
-| `check_description` | The check's `description` |
-| `check_source_url` | Link to the check at the release that ran |
-| `check_hash` | Hash of the check module's source |
+| `check_key` | Check module filename; joins `record_consistency_checks` |
 | `status` | `pass` or `fail` |
 | `record_kind` | From the source |
 | `record_id` | DocDB `_id` or S3 URI |
@@ -54,8 +58,24 @@ The code lives in `src/biodata_cache/cache_table_helpers/record_consistency/`:
 | `record_last_modified` | Source last-modified timestamp, nullable |
 | `checked_at` | Snapshot time, identical on every row |
 
-Rows are sorted by `(check_key, name, record_id)`. Zombie builds SQL from these
-names; change a column only together with the Zombie page.
+`record_consistency_checks`, sorted by `check_key`:
+
+| Column | Value |
+|---|---|
+| `check_key` | Check module filename |
+| `check_description` | The check's `description` |
+| `check_source_url` | Link to the check at the release that ran |
+| `check_hash` | Hash of the check module's source; gates reuse on the next run |
+| `source` | The source whose records the check evaluated |
+| `evaluated_count` | Records with a result, evaluated or reused |
+| `failed_count` | Records that failed |
+| `reused_count` | Results carried over without re-evaluation |
+| `check_eval_seconds` | Seconds spent in `evaluate()` |
+| `source_load_seconds` | Seconds spent loading the source; shared by checks that read it |
+| `checked_at` | Snapshot time, equal to the results' `checked_at` |
+
+Zombie builds SQL from these names; change a column only together with the
+Zombie page.
 
 ## Adding a check
 
@@ -132,21 +152,26 @@ DataFrame with columns `record_id`, `name`, `location`, `record_last_modified`.
   stored and live last-modified timestamps are equal. A `last_modified > last run`
   watermark misses records written with older timestamps and cannot see deletions.
 - **All or nothing.** Any source or check failure fails the job; nothing is
-  written and the previous snapshot stays published.
-- **Metadata on every row.** Description, source URL, and hash repeat per row
-  (Parquet dictionary-encodes them), so there is no manifest or second table to
-  keep consistent with the data.
+  written and the previous snapshot stays published. The results table is
+  written before the checks table; a run that dies between the two leaves
+  different `checked_at` values, which the page reports.
+- **Per-check facts in their own table.** Description, source link, hash, counts,
+  and timings have one value per check, so they live in `record_consistency_checks`
+  rather than repeating on every result row, which the browser would otherwise
+  materialize per row.
 - **Sources own I/O.** Checks stay pure and testable; credentials, cost, and
   change signals are properties of a source.
 
 ## Running and testing
 
 - Nightly: `BIODATA_CACHE_SYNC_JOB=record_consistency_checks`, after
-  `asset_basics`. Locally: `record_consistency_checks(force_update=True)`, or
+  `asset_basics`; it builds both tables and publishes both registry fragments.
+  Locally: `record_consistency_results(force_update=True)`, or
   `force_full_rerun=True` to ignore the previous snapshot.
 - Tests live in `tests/cache_table_helpers/record_consistency/` and stay offline.
   The `isolated` fixture in `conftest.py` swaps in empty registries and loads
   fake sources and checks from temporary modules, so framework tests do not
   depend on the real checks.
 - The job logs, per source, records loaded and skipped, and per check, records
-  evaluated, reused, and failed.
+  evaluated, reused, and failed; the checks table records the same counts and
+  timings.

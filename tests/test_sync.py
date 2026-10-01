@@ -55,6 +55,7 @@ def _make_registry(basics_df=None, sessions_df=None):
         "platform_qc": MagicMock(),
         "time_to_qc": MagicMock(),
         "storage_lens": MagicMock(),
+        "record_consistency_results": MagicMock(),
         "record_consistency_checks": MagicMock(),
     }
     return mocks
@@ -415,9 +416,10 @@ def test_record_consistency_checks_job_builds_and_publishes(mock_registry, mock_
 
     run_sync_job("record_consistency_checks")
 
-    reg["record_consistency_checks"].assert_called_once_with(force_update=True)
+    reg["record_consistency_results"].assert_called_once_with(force_update=True)
+    reg["record_consistency_checks"].assert_not_called()
     published = {call_args[0][0] for call_args in mock_backend.put_registry_fragment.call_args_list}
-    assert published == {"record_consistency_checks"}
+    assert published == {"record_consistency_results", "record_consistency_checks"}
 
 
 @patch("biodata_cache.sync.BACKEND")

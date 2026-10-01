@@ -439,9 +439,17 @@ TABLE_SPECS = (
         sync_job="storage_lens",
     ),
     TableSpec(
+        key="record_consistency_results",
+        name="record_consistency_results",
+        description="Record-consistency results, one row per evaluated record and check",
+        table_type=CacheTableType.metadata,
+        columns_factory="biodata_cache.cache_table_helpers.record_consistency.record_consistency_results_columns",
+        sync_job="record_consistency_checks",
+    ),
+    TableSpec(
         key="record_consistency_checks",
         name="record_consistency_checks",
-        description="Record-consistency check results, one row per evaluated DocDB record and check",
+        description="Record-consistency checks, one row per check in the current results",
         table_type=CacheTableType.metadata,
         columns_factory="biodata_cache.cache_table_helpers.record_consistency.record_consistency_checks_columns",
         sync_job="record_consistency_checks",
