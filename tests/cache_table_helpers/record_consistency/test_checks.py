@@ -17,3 +17,15 @@ def test_docdb_duplicate_name_v2_matches_names_exactly():
 
 def test_docdb_duplicate_name_v2_compares_across_records():
     assert CHECKS["docdb_duplicate_name_v2"].compares_across_records
+
+
+def test_docdb_v1_name_missing_in_v2_fails_names_without_an_exact_v2_match():
+    v1 = [{"record_id": str(index), "name": name} for index, name in enumerate(["kept", "Kept", "gone"])]
+    v2 = [{"record_id": "v2", "name": "kept"}]
+
+    assert CHECKS["docdb_v1_name_missing_in_v2"].evaluate(v1, docdb_v2=v2) == ["pass", "fail", "fail"]
+
+
+def test_docdb_v1_name_missing_in_v2_compares_against_docdb_v2():
+    check = CHECKS["docdb_v1_name_missing_in_v2"]
+    assert (check.source, check.needs, check.compares_across_records) == ("docdb_v1", ("docdb_v2",), True)
