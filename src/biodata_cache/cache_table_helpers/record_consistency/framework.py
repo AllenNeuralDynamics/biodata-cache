@@ -2,7 +2,7 @@
 
 A ``Source`` loads one population of records. A ``Check`` evaluates the records of
 one source, optionally against other sources, and returns ``pass`` or ``fail`` per
-record. The builder loads each source once, runs every registered check, and writes
+record, or ``None`` for a record it does not evaluate. The builder loads each source once, runs every registered check, and writes
 one snapshot of live state as two tables: ``record_consistency_results`` (one row per
 record and check) and ``record_consistency_checks`` (one row per check). Results of
 checks that do not compare across records are reused for records whose
@@ -59,6 +59,7 @@ class Source(ABC):
     name: ClassVar[str]
     record_kind: ClassVar[str]
     system: ClassVar[str]
+    extra_fields: ClassVar[tuple[str, ...]] = ()
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Register each concrete source under its unique ``name``."""
@@ -74,7 +75,7 @@ class Source(ABC):
 
     @abstractmethod
     def fetch(self, previous: pd.DataFrame) -> pd.DataFrame:
-        """Return the current records with columns ``RECORD_FIELDS``.
+        """Return the current records with columns ``RECORD_FIELDS`` and ``extra_fields``.
 
         Args:
             previous: This source's rows from the current snapshot, which a source may
@@ -85,13 +86,15 @@ class Source(ABC):
         """Return valid records sorted by ``(name, record_id)``.
 
         Records without a string ``record_id`` and a non-empty string ``name`` are
-        skipped, and a repeated ``record_id`` is kept once.
+        skipped, and a repeated ``record_id`` is kept once. ``extra_fields`` reach
+        checks but are not stored in the results.
 
         Raises:
             ValueError: If the source has no valid records.
         """
         fetched = self.fetch(previous)
-        frame = _without_missing(fetched.reindex(columns=RECORD_FIELDS).drop_duplicates(subset="record_id"))
+        columns = [*RECORD_FIELDS, *self.extra_fields]
+        frame = _without_missing(fetched.reindex(columns=columns).drop_duplicates(subset="record_id"))
         records = [
             record
             for record in frame.to_dict(orient="records")
@@ -140,8 +143,10 @@ class Check(ABC):
         CHECKS[key] = cls()
 
     @abstractmethod
-    def evaluate(self, records: list[dict[str, Any]], **needed: list[dict[str, Any]]) -> list[str]:
+    def evaluate(self, records: list[dict[str, Any]], **needed: list[dict[str, Any]]) -> list[str | None]:
         """Return ``pass`` or ``fail`` for each record, in input order.
+
+        ``None`` marks a record the check does not evaluate; it gets no result row.
 
         Args:
             records: Valid records of ``source``.
@@ -186,15 +191,19 @@ def _evaluate(
     started = time.perf_counter()
     statuses = check.evaluate(pending, **{name: loaded[name] for name in check.needs})
     eval_seconds = time.perf_counter() - started
-    if len(statuses) != len(pending) or not set(statuses) <= {PASS, FAIL}:
-        raise ValueError(f"Check {check.key!r} must return 'pass' or 'fail' for each record")
+    if len(statuses) != len(pending) or not set(statuses) <= {PASS, FAIL, None}:
+        raise ValueError(f"Check {check.key!r} must return 'pass', 'fail', or None for each record")
     evaluated = dict(zip((record["record_id"] for record in pending), statuses, strict=True))
 
     rows = pd.DataFrame(records, columns=RECORD_FIELDS)
     rows["status"] = [
-        evaluated.get(record["record_id"]) or reusable[(record["record_id"], record["record_last_modified"])]
+        evaluated[record["record_id"]]
+        if record["record_id"] in evaluated
+        else reusable[(record["record_id"], record["record_last_modified"])]
         for record in records
     ]
+    skipped_count = int(rows["status"].isna().sum())
+    rows = rows[rows["status"].notna()].reset_index(drop=True)
     rows["check_key"] = check.key
     rows["record_kind"] = SOURCES[check.source].record_kind
     summary = {
@@ -203,14 +212,15 @@ def _evaluate(
         "check_source_url": check.source_url,
         "check_hash": check.hash,
         "source": check.source,
-        "evaluated_count": len(records),
+        "evaluated_count": len(rows),
         "failed_count": int((rows["status"] == FAIL).sum()),
         "reused_count": len(records) - len(pending),
+        "skipped_count": skipped_count,
         "check_eval_seconds": round(eval_seconds, 3),
     }
     _log(
-        f"Check {check.key!r} evaluated {len(pending)} records, reused {summary['reused_count']}, "
-        f"failed {summary['failed_count']}"
+        f"Check {check.key!r} evaluated {len(pending) - skipped_count} records, reused {summary['reused_count']}, "
+        f"skipped {skipped_count}, failed {summary['failed_count']}"
     )
     return rows, summary
 
@@ -351,6 +361,7 @@ def record_consistency_checks_columns() -> list[Column]:
         Column(
             name="reused_count", description="Results carried over from the previous snapshot without re-evaluation"
         ),
+        Column(name="skipped_count", description="Records the check did not evaluate; they have no result row"),
         Column(name="check_eval_seconds", description="Seconds spent evaluating the check in this run"),
         Column(
             name="source_load_seconds",
