@@ -158,7 +158,12 @@ def test_results_and_checks_tables_describe_the_same_run(isolated, fake):
     assert summary["check_key"] == "shared_name"
     assert summary["check_description"] == "Fails records that share a name."
     assert summary["source"] == "fake"
-    assert (summary["evaluated_count"], summary["failed_count"], summary["reused_count"]) == (3, 2, 0)
+    assert (summary["evaluated_count"], summary["failed_count"], summary["reused_count"], summary["skipped_count"]) == (
+        3,
+        2,
+        0,
+        0,
+    )
     assert summary["check_eval_seconds"] >= 0 and summary["source_load_seconds"] >= 0
     assert set(results["checked_at"]) == {summary["checked_at"]}
 
@@ -242,6 +247,30 @@ def test_checks_that_compare_across_records_never_reuse_results(isolated, fake):
 
     assert results.set_index("record_id")["status"].to_dict() == {"id-1": "pass", "id-2": "pass"}
     assert checks.loc[0, "reused_count"] == 0
+
+
+def test_records_a_check_skips_have_no_result_row(isolated, fake):
+    isolated("name_starts_with_a", LOCAL_CHECK.replace("PASS if", 'None if record["location"] is None else PASS if'))
+
+    results, checks = _run()
+
+    assert results[["record_id", "status"]].values.tolist() == [["id-1", "pass"], ["id-3", "fail"]]
+    assert (checks.loc[0, "evaluated_count"], checks.loc[0, "skipped_count"]) == (2, 1)
+
+
+def test_extra_source_fields_reach_checks_but_not_results(isolated):
+    source = isolated(
+        "extra_source", SOURCE_MODULE.replace('system = "memory"', 'system = "memory"\n        extra_fields = ("tag",)')
+    )
+    source.Fake.fetch = lambda self, previous: pd.DataFrame(
+        [["id-1", "alpha", None, "t1", "keep"]], columns=[*framework.RECORD_FIELDS, "tag"]
+    )
+    isolated("tag_is_keep", LOCAL_CHECK.replace('record["name"].startswith("a")', 'record["tag"] == "keep"'))
+
+    results, _ = _run()
+
+    assert results["status"].tolist() == ["pass"]
+    assert "tag" not in results.columns
 
 
 def test_a_check_must_return_one_status_per_record(isolated, fake):

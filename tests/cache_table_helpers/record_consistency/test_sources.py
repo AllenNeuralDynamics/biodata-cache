@@ -1,5 +1,6 @@
 """Tests for record-consistency sources."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -44,18 +45,27 @@ def _v1(_id, name, last_modified="t1"):
 def _write_basics(rows):
     registry.BACKEND.write(
         registry.NAMES["basics"],
-        pd.DataFrame(rows, columns=["_id", "name", "location", "_last_modified", "subject_id"]),
+        pd.DataFrame(
+            [[*row, None] if len(row) == 5 else row for row in rows],
+            columns=["_id", "name", "location", "_last_modified", "subject_id", "code_ocean"],
+        ),
     )
 
 
 def test_docdb_v2_reads_records_from_asset_basics():
-    _write_basics([["id-2", "b", "s3://bucket/b", "t2", "s1"], ["id-1", "a", None, "t1", "s1"]])
+    _write_basics([["id-2", "b", "s3://bucket/b", "t2", "s1", ["co-1", "co-2"]], ["id-1", "a", None, "t1", "s1"]])
 
     records = SOURCES["docdb_v2"].load(pd.DataFrame())
 
     assert records == [
-        {"record_id": "id-1", "name": "a", "location": None, "record_last_modified": "t1"},
-        {"record_id": "id-2", "name": "b", "location": "s3://bucket/b", "record_last_modified": "t2"},
+        {"record_id": "id-1", "name": "a", "location": None, "record_last_modified": "t1", "code_ocean_ids": []},
+        {
+            "record_id": "id-2",
+            "name": "b",
+            "location": "s3://bucket/b",
+            "record_last_modified": "t2",
+            "code_ocean_ids": ["co-1", "co-2"],
+        },
     ]
 
 
@@ -168,3 +178,43 @@ def test_aind_open_data_prefixes_lists_every_top_level_prefix():
         "record_last_modified": None,
     }
     assert [record["name"] for record in records] == ["a-asset", "b-asset", "c-asset"]
+
+
+# --- code_ocean_data_assets ---
+
+
+def _asset(asset_id, name, bucket=None, prefix=None):
+    source_bucket = None if bucket is None else SimpleNamespace(bucket=bucket, prefix=prefix)
+    return SimpleNamespace(id=asset_id, name=name, source_bucket=source_bucket)
+
+
+def test_code_ocean_data_assets_reads_every_non_archived_asset(monkeypatch):
+    monkeypatch.setenv("CUSTOM_KEY", "token")
+    client = MagicMock()
+    client.data_assets.search_data_assets_iterator.return_value = iter(
+        [
+            _asset("co-2", "external", "aind-open-data", "external/"),
+            _asset("co-1", "internal"),
+            _asset("co-3", "bucket-root", "aind-scratch-data", None),
+        ]
+    )
+
+    with patch("codeocean.CodeOcean", return_value=client) as code_ocean:
+        records = SOURCES["code_ocean_data_assets"].load(pd.DataFrame())
+
+    assert code_ocean.call_args.kwargs["token"] == "token"
+    params = client.data_assets.search_data_assets_iterator.call_args.args[0]
+    assert (params.archived, params.limit) == (False, sources.CODE_OCEAN_PAGE_SIZE)
+    assert {record["record_id"]: record["location"] for record in records} == {
+        "co-1": None,
+        "co-2": "s3://aind-open-data/external",
+        "co-3": "s3://aind-scratch-data",
+    }
+    assert {record["record_last_modified"] for record in records} == {None}
+
+
+def test_code_ocean_data_assets_without_a_token_fails(monkeypatch):
+    monkeypatch.delenv("CUSTOM_KEY", raising=False)
+
+    with pytest.raises(ValueError, match="CUSTOM_KEY"):
+        SOURCES["code_ocean_data_assets"].load(pd.DataFrame())
