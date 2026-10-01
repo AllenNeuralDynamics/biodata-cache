@@ -146,11 +146,13 @@ def _job_qc() -> None:
 
 
 def _job_smartspim() -> None:
-    """Build the SmartSPIM platform and fiber CCF location tables."""
+    """Build SmartSPIM platform, QC metric, and fiber CCF location tables."""
     TABLE_REGISTRY[NAMES["smartspim"]](force_update=True)
     publish_registry_fragment(NAMES["smartspim"])
     TABLE_REGISTRY[NAMES["smartspim_fiber_ccf"]](force_update=True)
     publish_registry_fragment(NAMES["smartspim_fiber_ccf"])
+    TABLE_REGISTRY[NAMES["smartspim_qc_metrics"]](force_update=True)
+    publish_registry_fragment(NAMES["smartspim_qc_metrics"])
 
 
 def _job_exaspim() -> None:
