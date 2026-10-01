@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import boto3
 import pandas as pd
 
 import biodata_cache.registry as registry
@@ -99,4 +100,29 @@ class DocDbV1(Source):
         fetched_rows = pd.DataFrame(fetched, columns=list(V1_FIELDS)).rename(columns=V1_FIELDS)
         return pd.DataFrame(
             [*reused.to_dict(orient="records"), *fetched_rows.to_dict(orient="records")], columns=RECORD_FIELDS
+        )
+
+
+OPEN_DATA_BUCKET = "aind-open-data"
+
+
+class AindOpenDataPrefixes(Source):
+    """Top-level prefixes of the public ``aind-open-data`` bucket."""
+
+    name = "aind_open_data_prefixes"
+    record_kind = "s3_prefix"
+    system = "s3"
+
+    def fetch(self, previous: pd.DataFrame) -> pd.DataFrame:
+        """Return one record per top-level prefix; S3 prefixes have no last-modified time."""
+        paginator = boto3.client("s3").get_paginator("list_objects_v2")
+        prefixes = [
+            common_prefix["Prefix"].rstrip("/")
+            for page in paginator.paginate(Bucket=OPEN_DATA_BUCKET, Delimiter="/")
+            for common_prefix in page.get("CommonPrefixes", [])
+        ]
+        uris = [f"s3://{OPEN_DATA_BUCKET}/{prefix}" for prefix in prefixes]
+        return pd.DataFrame(
+            {"record_id": uris, "name": prefixes, "location": uris, "record_last_modified": None},
+            columns=RECORD_FIELDS,
         )

@@ -1,6 +1,6 @@
 """Tests for record-consistency sources."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -147,3 +147,24 @@ def test_docdb_v1_refetches_only_new_and_changed_records(v1_docdb):
 def test_docdb_v1_with_no_records_fails(v1_docdb):
     with pytest.raises(ValueError, match="no records"):
         SOURCES["docdb_v1"].load(pd.DataFrame(columns=RECORD_FIELDS))
+
+
+def test_aind_open_data_prefixes_lists_every_top_level_prefix():
+    client = MagicMock()
+    client.get_paginator.return_value.paginate.return_value = [
+        {"CommonPrefixes": [{"Prefix": "b-asset/"}, {"Prefix": "a-asset/"}]},
+        {"CommonPrefixes": [{"Prefix": "c-asset/"}]},
+        {},
+    ]
+
+    with patch("biodata_cache.cache_table_helpers.record_consistency.sources.boto3.client", return_value=client):
+        records = SOURCES["aind_open_data_prefixes"].load(pd.DataFrame())
+
+    client.get_paginator.return_value.paginate.assert_called_once_with(Bucket="aind-open-data", Delimiter="/")
+    assert records[0] == {
+        "record_id": "s3://aind-open-data/a-asset",
+        "name": "a-asset",
+        "location": "s3://aind-open-data/a-asset",
+        "record_last_modified": None,
+    }
+    assert [record["name"] for record in records] == ["a-asset", "b-asset", "c-asset"]

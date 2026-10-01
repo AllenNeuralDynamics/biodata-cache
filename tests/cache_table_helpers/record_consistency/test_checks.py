@@ -29,3 +29,25 @@ def test_docdb_v1_name_missing_in_v2_fails_names_without_an_exact_v2_match():
 def test_docdb_v1_name_missing_in_v2_compares_against_docdb_v2():
     check = CHECKS["docdb_v1_name_missing_in_v2"]
     assert (check.source, check.needs, check.compares_across_records) == ("docdb_v1", ("docdb_v2",), True)
+
+
+def test_aind_open_data_prefix_missing_docdb_v2_matches_v2_locations_exactly():
+    prefixes = [
+        {"record_id": f"s3://aind-open-data/{name}", "name": name, "location": f"s3://aind-open-data/{name}"}
+        for name in ["registered", "Registered", "unregistered"]
+    ]
+    v2 = [
+        {"record_id": "a", "name": "registered", "location": "s3://aind-open-data/registered/"},
+        {"record_id": "b", "name": "no-location", "location": None},
+    ]
+
+    assert CHECKS["aind_open_data_prefix_missing_docdb_v2"].evaluate(prefixes, docdb_v2=v2) == ["pass", "fail", "fail"]
+
+
+def test_aind_open_data_prefix_missing_docdb_v2_compares_against_docdb_v2():
+    check = CHECKS["aind_open_data_prefix_missing_docdb_v2"]
+    assert (check.source, check.needs, check.compares_across_records) == (
+        "aind_open_data_prefixes",
+        ("docdb_v2",),
+        True,
+    )
