@@ -74,7 +74,9 @@ from biodata_cache.cache_table_helpers.record_consistency.framework import FAIL,
 class DuplicateNameV2(Check):
     """Fail v2 records that share an exact name with another v2 record."""
 
-    description = "Fails every DocDB v2 record whose non-empty `name` exactly matches another v2 record."
+    description = (
+        "Fails DocDB v2 records whose 'name' field exactly matches the 'name' field of another DocDB v2 record."
+    )
     source = "docdb_v2"
     compares_across_records = True
 
