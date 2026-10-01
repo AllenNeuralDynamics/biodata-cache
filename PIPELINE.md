@@ -48,7 +48,7 @@ Run **`asset_basics` first**, then the parallel jobs, then **`cell-by-everything
 | `cell-by-everything` | `cell_index`, `cell_properties`, `cell_genes` | `ecephys_units`, `pophys`, `visual_learning` | Projects per-cell data into shared tables. Reads Visual Coding Neuropixels NWB-Zarr data directly and does not depend on manual SWDB tables. |
 | `curriculum`      | `behavior_curriculum` | `asset_basics` | |
 | `time_to_qc`      | `time_to_qc` | `asset_basics` | |
-| `record_consistency_checks` | `record_consistency_results`, `record_consistency_checks` | `asset_basics` | Runs every record-consistency check. Reads v2 records from the cached `asset_basics` and v1 records from DocDB, refetching only v1 records modified since the previous snapshot. |
+| `record_consistency_checks` | `record_consistency_results`, `record_consistency_checks` | `asset_basics` | Runs every record-consistency check. Reads v2 records from the cached `asset_basics`, v1 records from DocDB (refetching only v1 records modified since the previous snapshot), and the top-level prefixes of `aind-open-data`. |
 
 The table metadata and job ownership live in `TABLE_SPECS` in
 [`src/biodata_cache/table_specs.py`](src/biodata_cache/table_specs.py). Job
