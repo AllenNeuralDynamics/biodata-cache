@@ -1,0 +1,11 @@
+"""Record-consistency checks cache table: a snapshot of live consistency state.
+
+Add a check by adding a module under ``checks/`` that subclasses ``Check`` and
+importing it in ``checks/__init__.py``. Add a source in ``sources.py``.
+"""
+
+from biodata_cache.cache_table_helpers.record_consistency import checks, sources  # noqa: F401
+from biodata_cache.cache_table_helpers.record_consistency.framework import (  # noqa: F401
+    record_consistency_checks,
+    record_consistency_checks_columns,
+)
