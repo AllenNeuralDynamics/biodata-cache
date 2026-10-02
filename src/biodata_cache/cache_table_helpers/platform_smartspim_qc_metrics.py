@@ -1,6 +1,5 @@
 """Cache the standard SPIM QC metrics applied to derived SmartSPIM/ExaSPIM assets."""
 
-import json
 import logging
 import re
 
@@ -22,17 +21,13 @@ BRIGHTNESS_SUFFIX = " brightness"
 COLUMNS = [
     "subject_id",
     "name",
-    "instrument_id",
     "metric_name",
     "channel",
     "stage",
-    "value_json",
-    "reference",
-    "tags_json",
+    "value",
     "status",
     "evaluator",
     "status_timestamp",
-    "metric_json",
 ]
 
 
@@ -78,10 +73,9 @@ def _is_qualifying_record(record: dict) -> bool:
     )
 
 
-def _json_text(value) -> str | None:
-    if value is None:
-        return None
-    return json.dumps(value, ensure_ascii=False, default=str)
+def _metric_value(value):
+    """Return the scalar value stored inside structured QC metric values."""
+    return value.get("value") if isinstance(value, dict) else value
 
 
 def _standard_metric_names(channels: list[str]) -> set[str]:
@@ -111,17 +105,13 @@ def _build_rows(records: list[dict]) -> list[dict]:
                     "subject_id": (record.get("subject") or {}).get("subject_id")
                     or (record.get("data_description") or {}).get("subject_id"),
                     "name": record.get("name"),
-                    "instrument_id": (record.get("instrument") or {}).get("instrument_id"),
                     "metric_name": metric_name,
                     "channel": channel_by_metric.get(metric_name),
                     "stage": metric.get("stage"),
-                    "value_json": _json_text(metric.get("value")),
-                    "reference": metric.get("reference"),
-                    "tags_json": _json_text(metric.get("tags")),
+                    "value": _metric_value(metric.get("value")),
                     "status": latest.get("status"),
                     "evaluator": latest.get("evaluator"),
                     "status_timestamp": str(latest["timestamp"]) if latest.get("timestamp") else None,
-                    "metric_json": _json_text(metric),
                 }
             )
     return rows
@@ -164,18 +154,11 @@ def platform_smartspim_qc_metrics_columns() -> list[Column]:
     return [
         Column(name="subject_id", description="Subject ID"),
         Column(name="name", description="Derived SmartSPIM or ExaSPIM asset name"),
-        Column(name="instrument_id", description="Instrument identifier"),
         Column(name="metric_name", description="Standard SPIM QC metric name"),
         Column(name="channel", description="Acquisition channel for a brightness metric"),
         Column(name="stage", description="QC stage"),
-        Column(name="value_json", description="QC metric value as JSON"),
-        Column(
-            name="reference",
-            description="QC metric reference, including the generic Neuroglancer link when present",
-        ),
-        Column(name="tags_json", description="QC metric tags as JSON"),
+        Column(name="value", description="QC metric value"),
         Column(name="status", description="Latest QC status, if evaluated"),
         Column(name="evaluator", description="Evaluator of the latest QC status"),
         Column(name="status_timestamp", description="Timestamp of the latest QC status"),
-        Column(name="metric_json", description="Complete source QC metric as JSON"),
     ]
