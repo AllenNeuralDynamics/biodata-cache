@@ -15,6 +15,7 @@ from biodata_cache.sync import (
     run_sync_job,
     update_all_tables,
 )
+from biodata_cache.table_specs import TABLE_SPECS
 
 
 def _make_registry(basics_df=None, sessions_df=None):
@@ -54,6 +55,8 @@ def _make_registry(basics_df=None, sessions_df=None):
         "platform_qc": MagicMock(),
         "time_to_qc": MagicMock(),
         "storage_lens": MagicMock(),
+        "record_consistency_results": MagicMock(),
+        "record_consistency_checks": MagicMock(),
     }
     return mocks
 
@@ -405,6 +408,21 @@ def test_visual_learning_job_builds_both_public_lookup_tables(mock_registry, moc
 
 
 @patch("biodata_cache.sync.BACKEND")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
+def test_record_consistency_checks_job_builds_and_publishes(mock_registry, mock_backend):
+    reg = _make_registry()
+    mock_registry.__getitem__.side_effect = reg.__getitem__
+    mock_backend.get_location.return_value = "s3://bucket/path"
+
+    run_sync_job("record_consistency_checks")
+
+    reg["record_consistency_results"].assert_called_once_with(force_update=True)
+    reg["record_consistency_checks"].assert_not_called()
+    published = {call_args[0][0] for call_args in mock_backend.put_registry_fragment.call_args_list}
+    assert published == {"record_consistency_results", "record_consistency_checks"}
+
+
+@patch("biodata_cache.sync.BACKEND")
 @patch("biodata_cache.sync.build_cell_by_everything")
 def test_cell_by_everything_job_builds_and_publishes_all_three(mock_build, mock_backend):
     mock_backend.get_location.return_value = "s3://bucket/path"
@@ -475,7 +493,7 @@ def test_update_all_tables_runs_every_job(mock_run):
 def test_update_all_tables_fast_only(mock_run):
     update_all_tables(fast=True, slow=False)
     ran = [c[0][0] for c in mock_run.call_args_list]
-    assert ran == ["asset_basics", "fast"]
+    assert ran == ["asset_basics", "fast", "record_consistency_checks"]
 
 
 @patch("biodata_cache.sync.run_sync_job")
@@ -506,7 +524,7 @@ def test_update_all_tables_propagates_exceptions(mock_registry, mock_backend):
 def test_publish_cache_registry_writes_all_table_fragments(mock_backend):
     mock_backend.get_location.return_value = "s3://bucket/path"
     publish_cache_registry()
-    assert mock_backend.put_registry_fragment.call_count == 45
+    assert mock_backend.put_registry_fragment.call_count == len(TABLE_SPECS)
 
 
 @patch("biodata_cache.sync.BACKEND")

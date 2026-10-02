@@ -416,6 +416,13 @@ def _job_time_to_qc() -> None:
     publish_registry_fragment(NAMES["time_to_qc"])
 
 
+def _job_record_consistency_checks() -> None:
+    """Build the record-consistency results and checks tables."""
+    TABLE_REGISTRY[NAMES["record_consistency_results"]](force_update=True)
+    publish_registry_fragment(NAMES["record_consistency_results"])
+    publish_registry_fragment(NAMES["record_consistency_checks"])
+
+
 # Registry of sync jobs. asset_basics must run before any other job (it registers
 # the version and produces the tables every other job reads).
 JOBS: dict[str, Callable[[], None]] = {
@@ -437,6 +444,7 @@ JOBS: dict[str, Callable[[], None]] = {
     "video_frame_times": _job_video_frame_times,
     "curriculum": _job_curriculum,
     "time_to_qc": _job_time_to_qc,
+    "record_consistency_checks": _job_record_consistency_checks,
 }
 
 # Jobs whose outputs feed cell-by-everything must finish before that final job.
@@ -480,6 +488,7 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
 
     if fast:
         run_sync_job("fast")
+        run_sync_job("record_consistency_checks")
 
     if slow:
         for job in (
