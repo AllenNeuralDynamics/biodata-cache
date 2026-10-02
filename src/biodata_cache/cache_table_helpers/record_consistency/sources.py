@@ -1,5 +1,6 @@
 """Record sources for record-consistency checks."""
 
+import os
 from typing import Any
 
 import boto3
@@ -13,7 +14,15 @@ ASSET_BASICS_COLUMNS = {
     "name": "name",
     "location": "location",
     "_last_modified": "record_last_modified",
+    "code_ocean": "code_ocean_ids",
 }
+
+
+def _id_list(ids: Any) -> list[str]:
+    """Return a record's Code Ocean data asset IDs as a list of strings."""
+    if ids is None or isinstance(ids, float):
+        return []
+    return [str(asset_id) for asset_id in ids]
 
 
 class DocDbV2(Source):
@@ -22,13 +31,15 @@ class DocDbV2(Source):
     name = "docdb_v2"
     record_kind = "docdb_v2"
     system = "docdb"
+    extra_fields = ("code_ocean_ids",)
 
     def fetch(self, previous: pd.DataFrame) -> pd.DataFrame:
         """Return every v2 record in ``asset_basics``; ``previous`` is not needed."""
         basics = registry.BACKEND.read_filtered(
             registry.NAMES["basics"], columns=list(ASSET_BASICS_COLUMNS), limit=None
-        )
-        return basics.rename(columns=ASSET_BASICS_COLUMNS)[RECORD_FIELDS]
+        ).rename(columns=ASSET_BASICS_COLUMNS)
+        basics["code_ocean_ids"] = basics["code_ocean_ids"].map(_id_list)
+        return basics[[*RECORD_FIELDS, *self.extra_fields]]
 
 
 V1_FIELDS = {"_id": "record_id", "name": "name", "location": "location", "last_modified": "record_last_modified"}
@@ -124,5 +135,44 @@ class AindOpenDataPrefixes(Source):
         uris = [f"s3://{OPEN_DATA_BUCKET}/{prefix}" for prefix in prefixes]
         return pd.DataFrame(
             {"record_id": uris, "name": prefixes, "location": uris, "record_last_modified": None},
+            columns=RECORD_FIELDS,
+        )
+
+
+CODE_OCEAN_DOMAIN = "https://codeocean.allenneuraldynamics.org"
+CODE_OCEAN_TOKEN_VARIABLE = "CUSTOM_KEY"
+CODE_OCEAN_PAGE_SIZE = 1000
+CODE_OCEAN_RETRIES = 3
+
+
+def _source_uri(asset) -> str | None:
+    """Return the S3 URI a data asset was created from, or None for assets stored in Code Ocean."""
+    bucket = asset.source_bucket
+    if bucket is None or not bucket.bucket:
+        return None
+    return f"s3://{bucket.bucket}/{bucket.prefix or ''}".rstrip("/")
+
+
+class CodeOceanDataAssets(Source):
+    """Non-archived Code Ocean data assets visible to the token in ``CUSTOM_KEY``."""
+
+    name = "code_ocean_data_assets"
+    record_kind = "code_ocean_data_asset"
+    system = "code_ocean"
+
+    def fetch(self, previous: pd.DataFrame) -> pd.DataFrame:
+        """Return one record per data asset; the search API has no last-modified time."""
+        from codeocean import CodeOcean
+        from codeocean.data_asset import DataAssetSearchParams
+
+        token = os.environ.get(CODE_OCEAN_TOKEN_VARIABLE)
+        if not token:
+            raise ValueError(f"Set {CODE_OCEAN_TOKEN_VARIABLE} to a Code Ocean API token to read data assets")
+        client = CodeOcean(domain=CODE_OCEAN_DOMAIN, token=token, retries=CODE_OCEAN_RETRIES)
+        assets = client.data_assets.search_data_assets_iterator(
+            DataAssetSearchParams(archived=False, limit=CODE_OCEAN_PAGE_SIZE)
+        )
+        return pd.DataFrame(
+            [[asset.id, asset.name, _source_uri(asset), None] for asset in assets],
             columns=RECORD_FIELDS,
         )
