@@ -78,8 +78,28 @@ def _metric_value(value):
     return value.get("value") if isinstance(value, dict) else value
 
 
-def _standard_metric_names(channels: list[str]) -> set[str]:
-    return BASE_METRIC_NAMES | {f"{channel}{BRIGHTNESS_SUFFIX}" for channel in channels}
+def _metric_channel(metric: dict, channel_by_metric: dict[str, str]) -> str | None:
+    tags = metric.get("tags") or {}
+    if isinstance(tags, dict):
+        tagged_channel = next(
+            (
+                value
+                for key, value in tags.items()
+                if isinstance(key, str) and key.casefold() == "channel"
+            ),
+            None,
+        )
+        if isinstance(tagged_channel, str) and tagged_channel.strip():
+            return tagged_channel.strip()
+
+    metric_name = metric.get("name")
+    if not isinstance(metric_name, str):
+        return None
+    if metric_name in channel_by_metric:
+        return channel_by_metric[metric_name]
+    if metric_name.endswith(BRIGHTNESS_SUFFIX):
+        return metric_name[: -len(BRIGHTNESS_SUFFIX)] or None
+    return None
 
 
 def _build_rows(records: list[dict]) -> list[dict]:
@@ -91,11 +111,11 @@ def _build_rows(records: list[dict]) -> list[dict]:
 
         channels = _channel_names(record)
         channel_by_metric = {f"{channel}{BRIGHTNESS_SUFFIX}": channel for channel in channels}
-        metric_names = _standard_metric_names(channels)
         quality_control = record.get("quality_control") or {}
         for metric in quality_control.get("metrics") or []:
             metric_name = metric.get("name")
-            if metric_name not in metric_names:
+            is_brightness_metric = isinstance(metric_name, str) and metric_name.endswith(BRIGHTNESS_SUFFIX)
+            if metric_name not in BASE_METRIC_NAMES and not is_brightness_metric:
                 continue
 
             history = metric.get("status_history") or []
@@ -106,7 +126,7 @@ def _build_rows(records: list[dict]) -> list[dict]:
                     or (record.get("data_description") or {}).get("subject_id"),
                     "name": record.get("name"),
                     "metric_name": metric_name,
-                    "channel": channel_by_metric.get(metric_name),
+                    "channel": _metric_channel(metric, channel_by_metric),
                     "stage": metric.get("stage"),
                     "value": _metric_value(metric.get("value")),
                     "status": latest.get("status"),
