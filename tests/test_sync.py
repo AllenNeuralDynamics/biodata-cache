@@ -15,6 +15,7 @@ from biodata_cache.sync import (
     run_sync_job,
     update_all_tables,
 )
+from biodata_cache.table_specs import TABLE_SPECS
 
 
 def _make_registry(basics_df=None, sessions_df=None):
@@ -32,6 +33,7 @@ def _make_registry(basics_df=None, sessions_df=None):
         "metadata_core": MagicMock(),
         "raw_to_derived": MagicMock(),
         "quality_control": MagicMock(),
+        "qc_status": MagicMock(),
         "platform_smartspim": MagicMock(),
         "platform_smartspim_fiber_ccf": MagicMock(),
         "platform_exaspim": MagicMock(),
@@ -194,6 +196,21 @@ def test_qc_job_no_subjects_still_publishes(mock_registry, mock_backend):
 
     reg["quality_control"].assert_called_once_with(force_update=True, return_df=False)
     mock_backend.put_registry_fragment.assert_called_once()
+
+
+@patch("biodata_cache.sync.BACKEND")
+@patch("biodata_cache.sync.TABLE_REGISTRY")
+def test_qc_status_job_builds_and_publishes_without_other_tables(mock_registry, mock_backend):
+    reg = _make_registry()
+    mock_registry.__getitem__.side_effect = reg.__getitem__
+    mock_backend.get_location.return_value = "s3://bucket/path"
+
+    run_sync_job("qc_status")
+
+    reg["qc_status"].assert_called_once_with(force_update=True)
+    reg["asset_basics"].assert_not_called()
+    reg["quality_control"].assert_not_called()
+    assert mock_backend.put_registry_fragment.call_args[0][0] == "qc_status"
 
 
 # --- df job ------------------------------------------------------------------
@@ -485,6 +502,7 @@ def test_update_all_tables_slow_only(mock_run):
     assert ran[0] == "asset_basics"
     assert "fast" not in ran
     assert "qc" in ran and "time_to_qc" in ran
+    assert "qc_status" in ran
 
 
 @patch("biodata_cache.sync.BACKEND")
@@ -506,7 +524,7 @@ def test_update_all_tables_propagates_exceptions(mock_registry, mock_backend):
 def test_publish_cache_registry_writes_all_table_fragments(mock_backend):
     mock_backend.get_location.return_value = "s3://bucket/path"
     publish_cache_registry()
-    assert mock_backend.put_registry_fragment.call_count == 45
+    assert mock_backend.put_registry_fragment.call_count == len(TABLE_SPECS)
 
 
 @patch("biodata_cache.sync.BACKEND")
@@ -521,6 +539,7 @@ def test_publish_cache_registry_fragment_names(mock_backend):
         "asset_basics",
         "source_data",
         "quality_control",
+        "qc_status",
         "platform_smartspim",
         "platform_smartspim_fiber_ccf",
         "metadata_upgrade",

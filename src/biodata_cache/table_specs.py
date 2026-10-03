@@ -109,6 +109,14 @@ TABLE_SPECS = (
         sync_job="qc",
     ),
     TableSpec(
+        key="qc_status",
+        name="qc_status",
+        description="Aggregated quality-control status by modality and stage, one row per QC-bearing asset",
+        table_type=CacheTableType.metadata,
+        columns_factory="biodata_cache.cache_table_helpers.qc_status.qc_status_columns",
+        sync_job="qc_status",
+    ),
+    TableSpec(
         key="smartspim",
         name="platform_smartspim",
         description="SmartSPIM assets including processing status and neuroglancer links",

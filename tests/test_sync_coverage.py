@@ -5,6 +5,7 @@ from unittest.mock import patch
 from biodata_cache.backend import MemoryBackend
 from biodata_cache.models import CacheRegistry
 from biodata_cache.sync import publish_cache_registry
+from biodata_cache.table_specs import TABLE_SPECS
 from biodata_cache.utils import get_cache_registry
 
 
@@ -16,12 +17,13 @@ def test_fragments_round_trip_through_memory_backend():
         registry = get_cache_registry()
 
     assert isinstance(registry, CacheRegistry)
-    assert len(registry.tables) == 45
+    assert len(registry.tables) == len(TABLE_SPECS)
     names = [table.name for table in registry.tables]
     # merged registry is sorted by name for stable ordering
     assert names == sorted(names)
     assert "asset_basics" in names
     assert "quality_control" in names
+    assert "qc_status" in names
 
 
 def test_get_cache_registry_falls_back_to_legacy_monolith():
@@ -39,6 +41,6 @@ def test_clear_registry_removes_fragments():
     backend = MemoryBackend()
     with patch("biodata_cache.sync.BACKEND", backend):
         publish_cache_registry()
-        assert len(backend.list_registry_fragments()) == 45
+        assert len(backend.list_registry_fragments()) == len(TABLE_SPECS)
         backend.clear_registry()
         assert backend.list_registry_fragments() == []
