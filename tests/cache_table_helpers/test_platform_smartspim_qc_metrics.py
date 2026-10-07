@@ -24,9 +24,7 @@ class PlatformSmartspimQcMetricsTests(unittest.TestCase):
                         "value": {"value": 0.75, "units": "fraction"},
                         "reference": "reference-url",
                         "tags": {"suite": "example"},
-                        "status_history": [
-                            {"status": "Pass", "evaluator": "Automated", "timestamp": "2026-01-01"}
-                        ],
+                        "status_history": [{"status": "Pass", "evaluator": "Automated", "timestamp": "2026-01-01"}],
                     },
                     {
                         "name": "488 brightness",
@@ -91,11 +89,7 @@ class PlatformSmartspimQcMetricsTests(unittest.TestCase):
 
         self.assertEqual(len(rows), 4)
         self.assertEqual(
-            {
-                row["metric_name"]: row["channel"]
-                for row in rows
-                if row["metric_name"].endswith(" brightness")
-            },
+            {row["metric_name"]: row["channel"] for row in rows if row["metric_name"].endswith(" brightness")},
             {
                 "Ex_488_Em_525 brightness": "Ex_488_Em_525",
                 "Ex_561_Em_593 brightness": "Ex_561_Em_593",

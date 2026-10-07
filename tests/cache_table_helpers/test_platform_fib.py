@@ -70,7 +70,7 @@ SYNTHETIC_RECORD = {
                             ],
                         },
                     },
-                ]
+                ],
             }
         ]
     },

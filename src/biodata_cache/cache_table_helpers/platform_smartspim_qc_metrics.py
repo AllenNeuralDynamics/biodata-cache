@@ -56,7 +56,7 @@ def _fetch_records() -> list[dict]:
 
 def _channel_names(record: dict) -> list[str]:
     """Return channel names from acquisition metadata, preserving metadata order."""
-    channels = ((record.get("acquisition") or {}).get("channels") or [])
+    channels = (record.get("acquisition") or {}).get("channels") or []
     names = []
     for channel in channels:
         name = channel if isinstance(channel, str) else (channel or {}).get("channel_name")
@@ -66,11 +66,10 @@ def _channel_names(record: dict) -> list[str]:
 
 
 def _is_qualifying_record(record: dict) -> bool:
-    instrument_id = ((record.get("instrument") or {}).get("instrument_id") or "")
-    return (
-        (record.get("data_description") or {}).get("data_level") == "derived"
-        and re.search(r"(smart|exa)", instrument_id, flags=re.IGNORECASE) is not None
-    )
+    instrument_id = (record.get("instrument") or {}).get("instrument_id") or ""
+    return (record.get("data_description") or {}).get("data_level") == "derived" and re.search(
+        r"(smart|exa)", instrument_id, flags=re.IGNORECASE
+    ) is not None
 
 
 def _metric_value(value):
@@ -82,11 +81,7 @@ def _metric_channel(metric: dict, channel_by_metric: dict[str, str]) -> str | No
     tags = metric.get("tags") or {}
     if isinstance(tags, dict):
         tagged_channel = next(
-            (
-                value
-                for key, value in tags.items()
-                if isinstance(key, str) and key.casefold() == "channel"
-            ),
+            (value for key, value in tags.items() if isinstance(key, str) and key.casefold() == "channel"),
             None,
         )
         if isinstance(tagged_channel, str) and tagged_channel.strip():
