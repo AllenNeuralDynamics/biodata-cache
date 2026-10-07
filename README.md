@@ -62,13 +62,15 @@ Hive-partitioned tables use `key=value` directory segments, enabling DuckDB quer
 
 ```python
 import duckdb
-duckdb.query("""
+duckdb.query(
+"""
     SELECT * FROM read_parquet(
         's3://allen-data-views/data-asset-cache/bdc-v0.41/qc/subject_id=123/data.pqt',
         hive_partitioning=true,
         union_by_name=true
     )
-""")
+"""
+)
 ```
 
 The `raw_to_derived` function is not a table stored in S3, instead it is used by passing an asset_name (or list of asset names) and a modality. The function returns the latest derived asset matching the requested pattern.
