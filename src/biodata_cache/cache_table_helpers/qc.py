@@ -713,9 +713,7 @@ def _fetch_all_qc(return_df: bool = True) -> pd.DataFrame:
 
         for root, root_record_ids in root_group:
             root_records = [
-                records_by_id[record_id]
-                for record_id in dict.fromkeys(root_record_ids)
-                if record_id in records_by_id
+                records_by_id[record_id] for record_id in dict.fromkeys(root_record_ids) if record_id in records_by_id
             ]
             rows = _build_qc_rows_for_root(root, root_records, metadata, parents, children, processing_times)
             cache_key = f"{QC_STORAGE_NAME}/{root}"

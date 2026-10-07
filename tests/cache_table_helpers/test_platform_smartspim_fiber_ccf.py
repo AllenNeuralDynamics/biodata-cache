@@ -32,7 +32,13 @@ def _record(metrics=None):
         "subject": {"subject_id": "820651"},
         "procedures": {
             "subject_procedures": [
-                {"procedures": [_implant("Fiber 0"), _implant("Fiber 1", "SUB"), _implant("A", device_type="Ephys probe")]}
+                {
+                    "procedures": [
+                        _implant("Fiber 0"),
+                        _implant("Fiber 1", "SUB"),
+                        _implant("A", device_type="Ephys probe"),
+                    ]
+                }
             ]
         },
         "quality_control": {"metrics": metrics or []},

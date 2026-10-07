@@ -51,9 +51,7 @@ def _flatten_asset_record(record: dict) -> dict:
         e if isinstance(e, str) else e.get("name", "")
         for e in (record.get("acquisition", {}).get("experimenters", []) or [])
     ]
-    investigators = [
-        i.get("name", "") for i in (record.get("data_description", {}).get("investigators", []) or [])
-    ]
+    investigators = [i.get("name", "") for i in (record.get("data_description", {}).get("investigators", []) or [])]
     return {
         "_id": record["_id"],
         "_last_modified": record.get("_last_modified", None),
@@ -74,9 +72,7 @@ def _flatten_asset_record(record: dict) -> dict:
         "experimenters": experimenters,
         "experimenters_normalized": normalize_experimenters(experimenters),
         "instrument_id": record.get("acquisition", {}).get("instrument_id", None),
-        "instrument_id_normalized": normalize_instrument_id(
-            record.get("acquisition", {}).get("instrument_id", None)
-        ),
+        "instrument_id_normalized": normalize_instrument_id(record.get("acquisition", {}).get("instrument_id", None)),
         "investigators": investigators,
         "investigators_normalized": normalize_experimenters(investigators),
     }
