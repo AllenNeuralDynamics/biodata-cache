@@ -62,8 +62,9 @@ Hive-partitioned tables use `key=value` directory segments, enabling DuckDB quer
 
 ```python
 import duckdb
+
 duckdb.query(
-"""
+    """
     SELECT * FROM read_parquet(
         's3://allen-data-views/data-asset-cache/bdc-v0.41/qc/subject_id=123/data.pqt',
         hive_partitioning=true,
@@ -118,6 +119,7 @@ To run a single job (as a capsule does):
 
 ```python
 from biodata_cache.sync import run_sync_job
+
 run_sync_job()  # reads BIODATA_CACHE_SYNC_JOB, or pass e.g. run_sync_job("qc")
 ```
 
@@ -127,5 +129,6 @@ To rebuild everything in one local process (not used by the pipeline):
 
 ```python
 from biodata_cache.sync import update_all_tables
+
 update_all_tables()
 ```
