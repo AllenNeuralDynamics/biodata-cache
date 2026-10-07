@@ -145,12 +145,20 @@ def _job_qc() -> None:
     publish_registry_fragment(NAMES["qc"])
 
 
+def _job_qc_status() -> None:
+    """Build the API-only per-asset modality and stage QC status table."""
+    TABLE_REGISTRY[NAMES["qc_status"]](force_update=True)
+    publish_registry_fragment(NAMES["qc_status"])
+
+
 def _job_smartspim() -> None:
-    """Build the SmartSPIM platform and fiber CCF location tables."""
+    """Build SmartSPIM platform, QC metric, and fiber CCF location tables."""
     TABLE_REGISTRY[NAMES["smartspim"]](force_update=True)
     publish_registry_fragment(NAMES["smartspim"])
     TABLE_REGISTRY[NAMES["smartspim_fiber_ccf"]](force_update=True)
     publish_registry_fragment(NAMES["smartspim_fiber_ccf"])
+    TABLE_REGISTRY[NAMES["smartspim_qc_metrics"]](force_update=True)
+    publish_registry_fragment(NAMES["smartspim_qc_metrics"])
 
 
 def _job_exaspim() -> None:
@@ -428,6 +436,7 @@ JOBS: dict[str, Callable[[], None]] = {
     "fast": _job_fast,
     "storage_lens": _job_storage_lens,
     "qc": _job_qc,
+    "qc_status": _job_qc_status,
     "smartspim": _job_smartspim,
     "exaspim": _job_exaspim,
     "df": _job_df,
@@ -492,6 +501,7 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
         for job in (
             "storage_lens",
             "qc",
+            "qc_status",
             "smartspim",
             "exaspim",
             "df",

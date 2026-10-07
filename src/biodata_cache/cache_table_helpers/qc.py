@@ -685,7 +685,8 @@ def _fetch_all_qc(return_df: bool = True) -> pd.DataFrame:
     buffered_tag_row_count = 0
 
     def cache_tag_batch(batch_records: list[dict]) -> None:
-        nonlocal buffered_tag_row_count
+        nonlocal buffered_tag_row_count, buffered_tag_rows, tag_chunk_indices
+        nonlocal cleared_tag_subjects, tag_status_record_ids
         unique_records = []
         for record in batch_records:
             record_id = record.get("_id")
@@ -712,9 +713,7 @@ def _fetch_all_qc(return_df: bool = True) -> pd.DataFrame:
 
         for root, root_record_ids in root_group:
             root_records = [
-                records_by_id[record_id]
-                for record_id in dict.fromkeys(root_record_ids)
-                if record_id in records_by_id
+                records_by_id[record_id] for record_id in dict.fromkeys(root_record_ids) if record_id in records_by_id
             ]
             rows = _build_qc_rows_for_root(root, root_records, metadata, parents, children, processing_times)
             cache_key = f"{QC_STORAGE_NAME}/{root}"

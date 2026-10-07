@@ -91,9 +91,7 @@ class TestMetadataCore(unittest.TestCase):
     @patch("aind_data_access_api.document_db.MetadataDbClient")
     @patch("biodata_cache.cache_table_helpers.metadata_core.registry.BACKEND")
     def test_force_update_replaces_cache(self, mock_backend, mock_client_class):
-        mock_backend.read.return_value = pd.DataFrame(
-            [{"_id": "old", "_last_modified": "old", "subject": True}]
-        )
+        mock_backend.read.return_value = pd.DataFrame([{"_id": "old", "_last_modified": "old", "subject": True}])
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
         mock_client.retrieve_docdb_records.side_effect = [

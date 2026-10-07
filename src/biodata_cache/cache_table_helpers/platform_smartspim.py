@@ -119,9 +119,7 @@ def _build_rows(
             data_processes = record.get("processing", {}).get("data_processes", []) or []
             processing_end_time = data_processes[-1].get("end_date_time", None) if data_processes else None
             stitch_link = _stitched_link(location) if location else None
-            cached_processed_rows = [
-                row for row in cached_rows.get(stitched_name, []) if row.get("channel")
-            ]
+            cached_processed_rows = [row for row in cached_rows.get(stitched_name, []) if row.get("channel")]
             if cached_processed_rows:
                 channels = [row["channel"] for row in cached_processed_rows]
             elif location:

@@ -1,14 +1,12 @@
 ---
 name: zombie-cache-contract
-description: Maintain biodata-cache tables and registry entries consumed by Zombie's browser DuckDB pages.
+description: Maintain the versioned biodata-cache registry and table contracts read by Zombie's browser pages.
 ---
 
 # Zombie cache contract
 
-The published cache is versioned under `s3://allen-data-views/data-asset-cache/bdc-v<version>/`, with `cache_versions.json` selecting the latest version. Current registry files are distributed as `cache_registry/<table>.json`; `biodata_cache.utils.get_cache_registry()` also supports the legacy monolithic registry. A registry entry must accurately declare the table name, location, partitioning, type, and `Column` names/descriptions because Zombie builds SQL directly from these definitions. Do not change a column or partition key without checking Zombie consumers and the generated registry.
+Zombie resolves a cache version, reads published registry fragments, and queries Parquet over HTTPS in browser DuckDB. The registry is the consumer's contract for table location, type, columns, and partitioning. Inspect the current table specification and generated fragment before changing a table; do not rely on a remembered inventory of consumer tables.
 
-Zombie's core contract is `asset_basics` plus `source_data`. Other consumed tables include `unique_project_names`, `unique_subject_ids`, `metadata_upgrade`, `platform_smartspim`, `platform_exaspim`, `platform_fib`, `behavior_curriculum`, `time_to_qc`, `storage_lens`, `platform_mouselight`, `platform_dynamic_foraging_sessions`, subject-partitioned dynamic-foraging trials/events, fiber traces/operations, `platform_df_operations`, ecephys spikes/units, `platform_pophys`, `record_consistency_results`, `record_consistency_checks`, and platform QC/QC tables. Partitioned locations must use the exact hive form `<root>/<version>/<table>/<partition_key>=<value>/data.pqt` (or the generated chunk files) that Zombie's explicit URL readers expect.
+Preserve the core asset and provenance tables required to discover records. Other jobs publish independent fragments so an optional failure should not remove successful tables. Use backend-produced partition layouts and keep explicit partition URL readers consistent with them; browser readers cannot assume S3 prefix globbing works.
 
-The SWDB pages expect `platform_swdb_*` tables and explicit asset partitions; confirm the current registry and builder for the deployed cache before adding or renaming them. Do not make Zombie glob a virtual-hosted S3 prefix. Preserve `asset_basics` and `source_data` availability even when an optional downstream job fails.
-
-Cache tests use fake or memory S3 backends and inspect registry/table metadata without network access. Add contract coverage to the relevant backend, registry, sync, or cache-table-helper tests when a Zombie-facing schema changes.
+For a breaking schema, name, or partition change, identify Zombie consumers, coordinate their queries and the cache version, and verify that the published registry describes the actual objects. Use backend and registry fixtures for contract checks without relying on live S3.

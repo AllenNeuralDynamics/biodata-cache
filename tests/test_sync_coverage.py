@@ -23,6 +23,7 @@ def test_fragments_round_trip_through_memory_backend():
     assert names == sorted(names)
     assert "asset_basics" in names
     assert "quality_control" in names
+    assert "qc_status" in names
 
 
 def test_get_cache_registry_falls_back_to_legacy_monolith():
