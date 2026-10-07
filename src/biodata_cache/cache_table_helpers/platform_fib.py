@@ -135,7 +135,7 @@ def _extract_fiber_target_coordinates(record: dict) -> dict[str, dict]:
                 continue
 
             coordinates = {field: None for field in _TARGET_COORDINATE_FIELDS.values()}
-            for axis, value in zip(axes, translation):
+            for axis, value in zip(axes, translation, strict=True):
                 field = _TARGET_COORDINATE_FIELDS.get((axis.get("name") or "").upper())
                 if field:
                     coordinates[field] = value

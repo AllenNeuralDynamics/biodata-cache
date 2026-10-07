@@ -685,7 +685,8 @@ def _fetch_all_qc(return_df: bool = True) -> pd.DataFrame:
     buffered_tag_row_count = 0
 
     def cache_tag_batch(batch_records: list[dict]) -> None:
-        nonlocal buffered_tag_row_count
+        nonlocal buffered_tag_row_count, buffered_tag_rows, tag_chunk_indices
+        nonlocal cleared_tag_subjects, tag_status_record_ids
         unique_records = []
         for record in batch_records:
             record_id = record.get("_id")
