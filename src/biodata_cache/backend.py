@@ -20,6 +20,19 @@ from biodata_cache.utils import BDC_VERSION, CacheLogMessage, duckdb_query
 
 _CACHE_ROOT = "data-asset-cache"
 _VERSION_FOLDER = f"bdc-v{BDC_VERSION}"
+_CACHE_CONTROL_REVALIDATE = "no-cache, no-store, must-revalidate"
+_CACHE_CONTROL_IMMUTABLE = "max-age=31536000, immutable"
+_IMMUTABLE_TABLES = frozenset(
+    {
+        "cell_properties",
+        "platform_behavior-videos_frame-times",
+        "platform_ecephys_spikes",
+        "platform_ecephys_units",
+        "platform_fib_traces",
+        "platform_pophys",
+        "platform_visual_coding_ophys",
+    }
+)
 
 # Compatibility alias for callers that imported the old backend constant.
 HIVE_PARTITION_KEYS = PARTITION_KEYS
@@ -95,6 +108,14 @@ def _empty_filtered_result(
     """Build the empty result shape used for absent caches and no matches."""
     result = pd.DataFrame(columns=list(columns)) if columns is not None else pd.DataFrame()
     return (result, 0) if include_total else result
+
+
+def _cache_control_for_table(table_name: str) -> str:
+    """Return the S3 cache policy for a table or table partition."""
+    base_name = table_name.split("/", 1)[0]
+    if base_name in _IMMUTABLE_TABLES:
+        return _CACHE_CONTROL_IMMUTABLE
+    return _CACHE_CONTROL_REVALIDATE
 
 
 class Backend(ABC):
@@ -215,7 +236,7 @@ class S3Backend(Backend):
         self._sidecar_columns: dict[str, tuple[str, ...]] = {}
         self._sidecar_lock = threading.Lock()
 
-    def _put_columns_sidecar(self, json_key: str, data: pd.DataFrame) -> None:
+    def _put_columns_sidecar(self, json_key: str, data: pd.DataFrame, cache_control: str) -> None:
         """Write the ``<table>.json`` column sidecar, skipping an unchanged rewrite.
 
         For a partitioned table this sidecar describes the *table*, not the
@@ -243,6 +264,7 @@ class S3Backend(Backend):
                 Bucket=self.bucket,
                 Key=json_key,
                 Body=json.dumps({"columns": list(columns)}),
+                CacheControl=cache_control,
             )
         except Exception:
             # Do not let a failed PUT leave the key marked as written.
@@ -252,6 +274,7 @@ class S3Backend(Backend):
 
     def write(self, table_name: str, data: pd.DataFrame) -> None:
         """Store DataFrame as parquet file in S3."""
+        cache_control = _cache_control_for_table(table_name)
         if "/" in table_name:
             base, value = table_name.split("/", 1)
             partition_key = HIVE_PARTITION_KEYS[base]
@@ -278,6 +301,7 @@ class S3Backend(Backend):
             Bucket=self.bucket,
             Key=s3_key,
             Body=parquet_buffer.getvalue(),
+            CacheControl=cache_control,
         )
         logging.info(
             CacheLogMessage(
@@ -285,7 +309,7 @@ class S3Backend(Backend):
             ).to_json()
         )
 
-        self._put_columns_sidecar(json_key, data)
+        self._put_columns_sidecar(json_key, data, cache_control)
 
     def read(self, table_name: str | list[str]) -> pd.DataFrame:
         """Fetch DataFrame from S3 parquet file(s).
@@ -465,6 +489,7 @@ class S3Backend(Backend):
 
     def write_chunk(self, table_name: str, data: pd.DataFrame, chunk_idx: int) -> None:
         """Append one numbered parquet chunk to a hive partition."""
+        cache_control = _cache_control_for_table(table_name)
         base, value = table_name.split("/", 1)
         partition_key = HIVE_PARTITION_KEYS[base]
         s3_key = f"{_CACHE_ROOT}/{_VERSION_FOLDER}/{base}/{partition_key}={value}/data_{chunk_idx:04d}.pqt"
@@ -482,7 +507,12 @@ class S3Backend(Backend):
             column_encoding={col: "BYTE_STREAM_SPLIT" for col in float_cols} or None,
         )
         parquet_buffer.seek(0)
-        self.s3_client.put_object(Bucket=self.bucket, Key=s3_key, Body=parquet_buffer.getvalue())
+        self.s3_client.put_object(
+            Bucket=self.bucket,
+            Key=s3_key,
+            Body=parquet_buffer.getvalue(),
+            CacheControl=cache_control,
+        )
         logging.info(
             CacheLogMessage(
                 backend="S3Backend",
@@ -490,7 +520,7 @@ class S3Backend(Backend):
                 message=f"Stored chunk {chunk_idx} to s3://{self.bucket}/{s3_key}",
             ).to_json()
         )
-        self._put_columns_sidecar(json_key, data)
+        self._put_columns_sidecar(json_key, data, cache_control)
 
     def _cache_object_exists(self, table_name: str) -> bool:
         """Return True if the cache object(s) for a table exist in S3.
@@ -576,6 +606,7 @@ class S3Backend(Backend):
             Key=s3_key,
             Body=data.encode(),
             ContentType="application/json",
+            CacheControl=_CACHE_CONTROL_REVALIDATE,
         )
         logging.info(
             CacheLogMessage(
@@ -592,6 +623,7 @@ class S3Backend(Backend):
             Key=s3_key,
             Body=data,
             ContentType=content_type,
+            CacheControl=_CACHE_CONTROL_IMMUTABLE,
         )
         logging.info(
             CacheLogMessage(
@@ -614,6 +646,7 @@ class S3Backend(Backend):
             Key=index_key,
             Body=json.dumps(existing).encode(),
             ContentType="application/json",
+            CacheControl=_CACHE_CONTROL_REVALIDATE,
         )
 
     def _registry_prefix(self) -> str:
@@ -628,6 +661,7 @@ class S3Backend(Backend):
             Key=s3_key,
             Body=data.encode(),
             ContentType="application/json",
+            CacheControl=_CACHE_CONTROL_REVALIDATE,
         )
         logging.info(
             CacheLogMessage(

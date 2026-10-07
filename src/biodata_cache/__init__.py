@@ -6,7 +6,7 @@ Also exposes get_cache_registry to retrieve the merged registry of available cac
 tables and their metadata.
 """
 
-__version__ = "0.42.3"
+__version__ = "0.42.18"
 
 from biodata_cache.cache_table_helpers.asset_basics import asset_basics  # noqa: F401
 from biodata_cache.cache_table_helpers.behavior_curriculum import behavior_curriculum  # noqa: F401
@@ -45,6 +45,12 @@ from biodata_cache.cache_table_helpers.platform_mouselight import platform_mouse
 from biodata_cache.cache_table_helpers.platform_pophys import platform_pophys  # noqa: F401
 from biodata_cache.cache_table_helpers.platform_qc import platform_qc  # noqa: F401
 from biodata_cache.cache_table_helpers.platform_smartspim import assets_smartspim  # noqa: F401
+from biodata_cache.cache_table_helpers.platform_smartspim_fiber_ccf import (  # noqa: F401
+    platform_smartspim_fiber_ccf,
+)
+from biodata_cache.cache_table_helpers.platform_smartspim_qc_metrics import (  # noqa: F401
+    platform_smartspim_qc_metrics,
+)
 from biodata_cache.cache_table_helpers.platform_video_frame_times import platform_video_frame_times  # noqa: F401
 from biodata_cache.cache_table_helpers.platform_visual_coding_ophys import (  # noqa: F401
     platform_visual_coding_ophys,
@@ -54,6 +60,7 @@ from biodata_cache.cache_table_helpers.platform_visual_learning import (  # noqa
     platform_visual_learning_coreg,
 )
 from biodata_cache.cache_table_helpers.qc import qc, qc_columns  # noqa: F401
+from biodata_cache.cache_table_helpers.qc_status import qc_status  # noqa: F401
 from biodata_cache.cache_table_helpers.raw_to_derived import raw_to_derived  # noqa: F401
 from biodata_cache.cache_table_helpers.source_data import source_data  # noqa: F401
 from biodata_cache.cache_table_helpers.storage_lens import storage_lens  # noqa: F401

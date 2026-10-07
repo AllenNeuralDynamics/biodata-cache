@@ -12,6 +12,7 @@ from biodata_cache.cache_table_helpers.platform_fib import (
     _build_fib_rows,
     _extract_fiber_channel_entries,
     _extract_fiber_structure_map,
+    _extract_fiber_target_coordinates,
     _fetch_fib_records,
     platform_fib,
     platform_fib_columns,
@@ -33,16 +34,41 @@ SYNTHETIC_RECORD = {
     "procedures": {
         "subject_procedures": [
             {
+                "coordinate_system": {
+                    "name": "BREGMA_ARID",
+                    "origin": "Bregma",
+                    "axis_unit": "millimeter",
+                    "axes": [
+                        {"name": "AP"},
+                        {"name": "ML"},
+                        {"name": "SI"},
+                        {"name": "Depth"},
+                    ],
+                },
                 "procedures": [
                     {
                         "object_type": "Probe implant",
                         "implanted_device": {"name": "Fiber_0"},
-                        "device_config": {"primary_targeted_structure": {"acronym": "ACB"}},
+                        "device_config": {
+                            "primary_targeted_structure": {"acronym": "ACB"},
+                            "coordinate_system": {"name": "TIP_D", "axes": [{"name": "SI"}]},
+                            "transform": [
+                                {"object_type": "Translation", "translation": [2, -0.8, 0, 1.6]},
+                                {"object_type": "Rotation", "angles": [5, 0, 0, 0]},
+                            ],
+                        },
                     },
                     {
                         "object_type": "Probe implant",
                         "implanted_device": {"name": "Fiber_1"},
-                        "device_config": {"primary_targeted_structure": {"acronym": "PIR"}},
+                        "device_config": {
+                            "primary_targeted_structure": {"acronym": "PIR"},
+                            "coordinate_system": {"name": "TIP_D", "axes": [{"name": "SI"}]},
+                            "transform": [
+                                {"object_type": "Translation", "translation": [2, 0.8, 0, 1.6]},
+                                {"object_type": "Rotation", "angles": [5, 0, 0, 0]},
+                            ],
+                        },
                     },
                 ]
             }
@@ -141,6 +167,20 @@ def test_extract_fiber_structure_map_real_example(real_record):
     assert "Fiber_0" in result
     assert result["Fiber_0"] == "PL"
     assert result["Fiber_2"] == "ACB"
+
+
+def test_extract_fiber_target_coordinates_uses_surgery_axes():
+    result = _extract_fiber_target_coordinates(SYNTHETIC_RECORD)
+    assert result["Fiber_0"] == {
+        "target_coordinate_ap": 2,
+        "target_coordinate_ml": -0.8,
+        "target_coordinate_si": 0,
+        "target_coordinate_depth": 1.6,
+        "target_coordinate_system": "BREGMA_ARID",
+        "target_coordinate_origin": "Bregma",
+        "target_coordinate_unit": "millimeter",
+    }
+    assert result["Fiber_1"]["target_coordinate_ml"] == 0.8
 
 
 # --- _extract_fiber_channel_entries ---
@@ -257,6 +297,13 @@ def test_build_fib_rows_keys():
         "channel",
         "intended_measurement",
         "targeted_structure",
+        "target_coordinate_ap",
+        "target_coordinate_ml",
+        "target_coordinate_si",
+        "target_coordinate_depth",
+        "target_coordinate_system",
+        "target_coordinate_origin",
+        "target_coordinate_unit",
     }
 
 
@@ -265,6 +312,15 @@ def test_build_fib_rows_targeted_structure():
     by_fiber = {r["fiber"]: r["targeted_structure"] for r in rows}
     assert by_fiber["Fiber 0"] == "ACB"
     assert by_fiber["Fiber 1"] == "PIR"
+
+
+def test_build_fib_rows_target_coordinates_follow_fiber_name_normalization():
+    rows = _build_fib_rows([SYNTHETIC_RECORD])
+    by_fiber = {row["fiber"]: row for row in rows}
+    assert by_fiber["Fiber 0"]["target_coordinate_ap"] == 2
+    assert by_fiber["Fiber 0"]["target_coordinate_ml"] == -0.8
+    assert by_fiber["Fiber 1"]["target_coordinate_ml"] == 0.8
+    assert by_fiber["Fiber 0"]["target_coordinate_system"] == "BREGMA_ARID"
 
 
 def test_build_fib_rows_empty():
@@ -379,3 +435,10 @@ def test_platform_fib_columns_names():
     assert "channel" in names
     assert "intended_measurement" in names
     assert "targeted_structure" in names
+    assert "target_coordinate_ap" in names
+    assert "target_coordinate_ml" in names
+    assert "target_coordinate_si" in names
+    assert "target_coordinate_depth" in names
+    assert "target_coordinate_system" in names
+    assert "target_coordinate_origin" in names
+    assert "target_coordinate_unit" in names

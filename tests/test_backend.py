@@ -1,5 +1,6 @@
 """Unit tests for biodata_cache.backend module."""
 
+import unittest
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
@@ -218,10 +219,58 @@ def test_s3_write(mock_boto3_client):
     assert parquet_call["Bucket"] == "allen-data-views"
     assert parquet_call["Key"] == f"data-asset-cache/{_VF}/test_table.pqt"
     assert isinstance(parquet_call["Body"], bytes)
+    assert parquet_call["CacheControl"] == "no-cache, no-store, must-revalidate"
     json_call = mock_s3_client.put_object.call_args_list[1][1]
     assert json_call["Bucket"] == "allen-data-views"
     assert json_call["Key"] == f"data-asset-cache/{_VF}/test_table.json"
     assert "columns" in json_call["Body"]
+    assert json_call["CacheControl"] == "no-cache, no-store, must-revalidate"
+
+
+class TestS3CacheControl(unittest.TestCase):
+    @patch("biodata_cache.backend.boto3.client")
+    def test_immutable_table_write(self, mock_boto3_client):
+        mock_s3_client = MagicMock()
+        mock_boto3_client.return_value = mock_s3_client
+        backend = S3Backend()
+
+        backend.write("platform_ecephys_spikes/asset-1", pd.DataFrame({"spike_time": [1.0]}))
+
+        for call in mock_s3_client.put_object.call_args_list:
+            self.assertEqual(call.kwargs["CacheControl"], "max-age=31536000, immutable")
+
+    @patch("biodata_cache.backend.boto3.client")
+    def test_immutable_table_chunk_write(self, mock_boto3_client):
+        mock_s3_client = MagicMock()
+        mock_boto3_client.return_value = mock_s3_client
+        backend = S3Backend()
+
+        backend.write_chunk("platform_ecephys_units/asset-1", pd.DataFrame({"unit_id": [1]}), 0)
+
+        for call in mock_s3_client.put_object.call_args_list:
+            self.assertEqual(call.kwargs["CacheControl"], "max-age=31536000, immutable")
+
+    @patch("biodata_cache.backend.boto3.client")
+    def test_reused_partition_tables_are_immutable(self, mock_boto3_client):
+        mock_s3_client = MagicMock()
+        mock_boto3_client.return_value = mock_s3_client
+        backend = S3Backend()
+        table_names = (
+            "cell_properties",
+            "platform_behavior-videos_frame-times",
+            "platform_ecephys_spikes",
+            "platform_ecephys_units",
+            "platform_fib_traces",
+            "platform_pophys",
+            "platform_visual_coding_ophys",
+        )
+
+        for table_name in table_names:
+            backend.write(f"{table_name}/asset-1", pd.DataFrame({"value": [1]}))
+
+        self.assertTrue(mock_s3_client.put_object.call_args_list)
+        for call in mock_s3_client.put_object.call_args_list:
+            self.assertEqual(call.kwargs["CacheControl"], "max-age=31536000, immutable")
 
 
 @patch("biodata_cache.backend.boto3.client")

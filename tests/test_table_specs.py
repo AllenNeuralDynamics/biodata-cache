@@ -23,6 +23,10 @@ def test_table_specs_preserve_storage_contracts():
     assert quality_control.partition_key == "raw_asset_name"
     assert PARTITION_KEYS["qc"] == "raw_asset_name"
 
+    qc_status = TABLE_SPECS_BY_NAME["qc_status"]
+    assert qc_status.sync_job == "qc_status"
+    assert not qc_status.partitioned
+
     metadata_core = TABLE_SPECS_BY_NAME["metadata_core"]
     assert metadata_core.sync_job == "fast"
     assert metadata_core.lifecycle == "nightly"

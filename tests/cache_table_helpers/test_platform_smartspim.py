@@ -208,6 +208,19 @@ def test_build_rows_processed_row_fields_populated(mock_list_channels):
 
 
 @patch("biodata_cache.cache_table_helpers.platform_smartspim._list_channels")
+def test_build_rows_reuses_cached_channels(mock_list_channels):
+    cached_channel = "Ex_561_Em_600"
+    rows = _build_rows(
+        {RAW_NAME: STITCHED_NAME},
+        {STITCHED_NAME: EXAMPLE_RECORD},
+        {RAW_NAME: "https://example.com/cached_raw"},
+        {STITCHED_NAME: [{"channel": cached_channel}]},
+    )
+    assert [row["channel"] for row in rows] == [cached_channel]
+    mock_list_channels.assert_not_called()
+
+
+@patch("biodata_cache.cache_table_helpers.platform_smartspim._list_channels")
 def test_build_rows_processed_no_channels_emits_single_null_row(mock_list_channels):
     mock_list_channels.return_value = []
     rows = _build_rows({RAW_NAME: STITCHED_NAME}, {STITCHED_NAME: EXAMPLE_RECORD}, {RAW_NAME: None})
@@ -317,6 +330,44 @@ def test_force_update_builds_and_caches(
 
 
 @patch("biodata_cache.cache_table_helpers.platform_smartspim._fetch_raw_ng_link")
+@patch("biodata_cache.cache_table_helpers.platform_smartspim._build_rows")
+@patch("biodata_cache.cache_table_helpers.platform_smartspim._fetch_asset_metadata")
+@patch("biodata_cache.cache_table_helpers.platform_smartspim.source_data")
+@patch("biodata_cache.cache_table_helpers.platform_smartspim.asset_basics")
+@patch("biodata_cache.cache_table_helpers.platform_smartspim.registry.BACKEND")
+def test_force_update_reuses_discovered_raw_link(
+    mock_backend, mock_asset_basics, mock_source_data, mock_fetch_meta, mock_build_rows, mock_raw_ng_link
+):
+    cached_raw_link = "https://example.com/cached_raw"
+    mock_backend.read.return_value = pd.DataFrame(
+        [{"name": STITCHED_NAME, "raw_name": RAW_NAME, "raw_link": cached_raw_link, "channel": "Ex_561_Em_600"}]
+    )
+    mock_asset_basics.return_value = pd.DataFrame(
+        {
+            "data_level": ["raw"],
+            "modalities": [np.array(["SPIM"])],
+            "name": [RAW_NAME],
+            "instrument_id": ["SmartSPIM_123"],
+        }
+    )
+    mock_source_data.return_value = pd.DataFrame(
+        {
+            "name": [STITCHED_NAME],
+            "source_data": [RAW_NAME],
+            "pipeline_name": ["stitching"],
+            "processing_time": ["2026-01-02_00-00-00"],
+        }
+    )
+    mock_fetch_meta.return_value = {}
+    mock_build_rows.return_value = []
+
+    assets_smartspim(force_update=True)
+
+    mock_raw_ng_link.assert_not_called()
+    assert mock_build_rows.call_args.args[2] == {RAW_NAME: cached_raw_link}
+
+
+@patch("biodata_cache.cache_table_helpers.platform_smartspim._fetch_raw_ng_link")
 @patch("biodata_cache.cache_table_helpers.platform_smartspim.source_data")
 @patch("biodata_cache.cache_table_helpers.platform_smartspim.asset_basics")
 @patch("biodata_cache.cache_table_helpers.platform_smartspim.registry.BACKEND")
@@ -361,18 +412,42 @@ def test_filters_only_raw_spim_assets(mock_backend, mock_asset_basics, mock_sour
     mock_backend.read.return_value = pd.DataFrame()
     mock_asset_basics.return_value = pd.DataFrame(
         {
-            "data_level": ["raw", "raw", "derived"],
-            "modalities": [np.array(["SPIM"]), np.array(["ECEPHYS"]), np.array(["SPIM"])],
-            "name": ["spim_raw", "ecephys_raw", "spim_derived"],
-            "instrument_id": ["SmartSPIM_123", "probe_123", "SmartSPIM_123"],
+            "data_level": ["raw", "raw", "raw", "raw", "derived"],
+            "modalities": [
+                np.array(["SPIM"]),
+                np.array(["SPIM"]),
+                np.array(["SPIM"]),
+                np.array(["ECEPHYS"]),
+                np.array(["SPIM"]),
+            ],
+            "name": ["spim_raw", "exa_spim_raw", "generic_spim_raw", "ecephys_raw", "spim_derived"],
+            "instrument_id": [
+                "SmartSPIM_123",
+                "exa-smartspim-123",
+                "SPIM_123",
+                "SmartSPIM_123",
+                "SmartSPIM_123",
+            ],
         }
     )
     mock_source_data.return_value = pd.DataFrame(
         {
-            "name": ["spim_raw_stitched_2026-01-02_00-00-00", "ecephys_raw_derived", "spim_derived_stitched"],
-            "source_data": ["spim_raw", "ecephys_raw", "spim_derived"],
-            "pipeline_name": ["stitching", "pipeline", "stitching"],
-            "processing_time": ["2026-01-02_00-00-00", "2026-01-02_00-00-00", "2026-01-02_00-00-00"],
+            "name": [
+                "spim_raw_stitched_2026-01-02_00-00-00",
+                "exa_spim_raw_stitched",
+                "generic_spim_raw_stitched",
+                "ecephys_raw_derived",
+                "spim_derived_stitched",
+            ],
+            "source_data": ["spim_raw", "exa_spim_raw", "generic_spim_raw", "ecephys_raw", "spim_derived"],
+            "pipeline_name": ["stitching", "stitching", "stitching", "pipeline", "stitching"],
+            "processing_time": [
+                "2026-01-02_00-00-00",
+                "2026-01-02_00-00-00",
+                "2026-01-02_00-00-00",
+                "2026-01-02_00-00-00",
+                "2026-01-02_00-00-00",
+            ],
         }
     )
     mock_raw_ng_link.return_value = None
@@ -381,6 +456,8 @@ def test_filters_only_raw_spim_assets(mock_backend, mock_asset_basics, mock_sour
             assets_smartspim(force_update=True)
     raw_to_stitched_arg = mock_build.call_args[0][0]
     assert "spim_raw" in raw_to_stitched_arg
+    assert "exa_spim_raw" in raw_to_stitched_arg
+    assert "generic_spim_raw" not in raw_to_stitched_arg
     assert "ecephys_raw" not in raw_to_stitched_arg
     assert "spim_derived" not in raw_to_stitched_arg
 
