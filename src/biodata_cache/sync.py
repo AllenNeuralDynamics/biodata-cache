@@ -162,9 +162,16 @@ def _job_smartspim() -> None:
 
 
 def _job_exaspim() -> None:
-    """Build the ExaSPIM platform table."""
+    """Build the ExaSPIM platform and intermediate-folder tables."""
     TABLE_REGISTRY[NAMES["exaspim"]](force_update=True)
     publish_registry_fragment(NAMES["exaspim"])
+    _job_exaspim_intermediates()
+
+
+def _job_exaspim_intermediates() -> None:
+    """Build and publish the ExaSPIM intermediate-folder inventory."""
+    TABLE_REGISTRY[NAMES["exaspim_intermediates"]](force_update=True)
+    publish_registry_fragment(NAMES["exaspim_intermediates"])
 
 
 def _job_df() -> None:
@@ -439,6 +446,7 @@ JOBS: dict[str, Callable[[], None]] = {
     "qc_status": _job_qc_status,
     "smartspim": _job_smartspim,
     "exaspim": _job_exaspim,
+    "exaspim_intermediates": _job_exaspim_intermediates,
     "df": _job_df,
     "fib_traces": _job_fib_traces,
     "operations": _job_operations,
@@ -457,8 +465,11 @@ JOBS: dict[str, Callable[[], None]] = {
 # Jobs whose outputs feed cell-by-everything must finish before that final job.
 CELL_BY_EVERYTHING_SOURCE_JOBS = ("ecephys_units", "pophys", "visual_learning")
 
+# Targeted refreshes already covered by an owning job in full and pipeline runs.
+TARGETED_ONLY_JOBS = ("exaspim_intermediates",)
+
 # Jobs that may run in parallel once asset_basics has completed.
-PARALLEL_JOBS = tuple(name for name in JOBS if name not in ("asset_basics", "cell-by-everything"))
+PARALLEL_JOBS = tuple(name for name in JOBS if name not in ("asset_basics", "cell-by-everything", *TARGETED_ONLY_JOBS))
 
 
 def run_sync_job(job: str | None = None) -> None:

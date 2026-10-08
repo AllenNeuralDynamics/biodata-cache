@@ -38,6 +38,9 @@ from biodata_cache.cache_table_helpers.platform_df_operations import platform_df
 from biodata_cache.cache_table_helpers.platform_ecephys_spikes import platform_ecephys_spikes  # noqa: F401
 from biodata_cache.cache_table_helpers.platform_ecephys_units import platform_ecephys_units  # noqa: F401
 from biodata_cache.cache_table_helpers.platform_exaspim import platform_exaspim  # noqa: F401
+from biodata_cache.cache_table_helpers.platform_exaspim_intermediates import (
+    platform_exaspim_intermediates,  # noqa: F401
+)
 from biodata_cache.cache_table_helpers.platform_fib import platform_fib  # noqa: F401
 from biodata_cache.cache_table_helpers.platform_fib_operations import platform_fib_operations  # noqa: F401
 from biodata_cache.cache_table_helpers.platform_fib_traces import platform_fib_traces  # noqa: F401

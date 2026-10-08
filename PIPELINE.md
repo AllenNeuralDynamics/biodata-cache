@@ -36,7 +36,7 @@ Run **`asset_basics` first**, then the parallel jobs, then **`cell-by-everything
 | `qc`              | `quality_control` | `asset_basics` | Fetches QC-bearing records in 50-record batches and partitions them by raw asset. |
 | `qc_status`       | `qc_status` | — | Fetches aggregate modality and stage statuses from DocDB in 50-record batches; does not read other cache tables. |
 | `smartspim`       | `platform_smartspim`, `platform_smartspim_fiber_ccf` | `asset_basics` | |
-| `exaspim`         | `platform_exaspim` | `asset_basics` | |
+| `exaspim`         | `platform_exaspim`, `platform_exaspim_intermediates` | `asset_basics` | Rechecks intermediate-folder presence each run. |
 | `df`              | `platform_dynamic_foraging_sessions`, `platform_dynamic_foraging_trials`, `platform_dynamic_foraging_events` | `asset_basics` | Builds sessions first, then loops per-subject for trials/events. |
 | `fib_traces`      | `platform_fib_traces` | `asset_basics` | Loops over derived `fib` assets; skips assets whose partition already exists. |
 | `operations`      | `platform_fib_operations`, `platform_df_operations` | — | Pulls all pipeline lifecycle events from CloudWatch in **one** Logs Insights query and routes them to each `platform_*_operations` table, so the log pull is done once and reused. Overwrites every acquisition's partition each run. |
@@ -55,6 +55,10 @@ The table metadata and job ownership live in `TABLE_SPECS` in
 execution lives in `JOBS` in [`src/biodata_cache/sync.py`](src/biodata_cache/sync.py).
 `cell-by-everything` runs after its three source jobs, so it is excluded from
 `PARALLEL_JOBS`.
+
+`exaspim_intermediates` remains available for a targeted refresh of only the
+intermediate inventory. It is excluded from full and parallel job lists because
+the owning `exaspim` job builds that table.
 
 An invalid or missing value raises `ValueError` listing the valid jobs, so a
 mis-set capsule fails fast rather than silently doing nothing.

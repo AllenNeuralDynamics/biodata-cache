@@ -153,6 +153,16 @@ TABLE_SPECS = (
         sync_job="exaspim",
     ),
     TableSpec(
+        key="exaspim_intermediates",
+        name="platform_exaspim_intermediates",
+        description="ExaSPIM intermediate-folder presence and fusion prerequisites, seeded by raw acquisition metadata",
+        table_type=CacheTableType.metadata,
+        columns_factory=(
+            "biodata_cache.cache_table_helpers.platform_exaspim_intermediates.platform_exaspim_intermediates_columns"
+        ),
+        sync_job="exaspim",
+    ),
+    TableSpec(
         key="upgrade",
         name="metadata_upgrade",
         description="Metadata upgrade status for each asset across versions",

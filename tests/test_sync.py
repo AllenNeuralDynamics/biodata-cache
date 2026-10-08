@@ -10,6 +10,7 @@ from biodata_cache.sync import (
     CELL_BY_EVERYTHING_SOURCE_JOBS,
     JOBS,
     PARALLEL_JOBS,
+    TARGETED_ONLY_JOBS,
     publish_cache_registry,
     publish_registry_fragment,
     run_sync_job,
@@ -37,6 +38,7 @@ def _make_registry(basics_df=None, sessions_df=None):
         "platform_smartspim": MagicMock(),
         "platform_smartspim_fiber_ccf": MagicMock(),
         "platform_exaspim": MagicMock(),
+        "platform_exaspim_intermediates": MagicMock(),
         "metadata_upgrade": MagicMock(),
         "platform_fib": MagicMock(),
         "platform_fib_traces": MagicMock(),
@@ -104,7 +106,8 @@ def test_run_sync_job_unknown_job_raises(monkeypatch):
 def test_parallel_jobs_excludes_asset_basics():
     assert "asset_basics" not in PARALLEL_JOBS
     assert "cell-by-everything" not in PARALLEL_JOBS
-    assert set(PARALLEL_JOBS) | {"asset_basics", "cell-by-everything"} == set(JOBS)
+    assert not set(TARGETED_ONLY_JOBS) & set(PARALLEL_JOBS)
+    assert set(PARALLEL_JOBS) | {"asset_basics", "cell-by-everything", *TARGETED_ONLY_JOBS} == set(JOBS)
 
 
 # --- asset_basics job --------------------------------------------------------
@@ -502,7 +505,8 @@ def test_update_all_tables_runs_every_job(mock_run):
     update_all_tables()
     ran = [c[0][0] for c in mock_run.call_args_list]
     assert ran[0] == "asset_basics"
-    assert set(ran) == set(JOBS)
+    assert set(ran) == set(JOBS) - set(TARGETED_ONLY_JOBS)
+    assert "exaspim_intermediates" not in ran
 
 
 @patch("biodata_cache.sync.run_sync_job")
@@ -583,3 +587,15 @@ def test_publish_registry_fragment_payload_is_valid_cache_table(mock_backend):
     assert parsed["partition_key"] == "raw_asset_name"
     assert parsed["type"] == "asset"
     assert len(parsed["columns"]) > 0
+
+
+def test_exaspim_job_builds_and_publishes_both_tables():
+    registry = _make_registry()
+    with (
+        patch("biodata_cache.sync.TABLE_REGISTRY", registry),
+        patch("biodata_cache.sync.publish_registry_fragment") as publish,
+    ):
+        run_sync_job("exaspim")
+    registry["platform_exaspim"].assert_called_once_with(force_update=True)
+    registry["platform_exaspim_intermediates"].assert_called_once_with(force_update=True)
+    assert publish.call_args_list == [call("platform_exaspim"), call("platform_exaspim_intermediates")]
