@@ -8,6 +8,18 @@ the pipeline always has a reproducible run in place.
 If you change the sync jobs or table contracts, update this file and the
 `TABLE_SPECS` manifest.
 
+## Scoped computations over attached assets
+
+This pipeline uses `BIODATA_CACHE_BACKEND=S3` and publishes the complete public
+cache. The separate `codeocean` backend reads attached metadata under `/data`
+and writes local results under `/results/biodata-cache` by default. Its
+`smartspim` job builds only `platform_smartspim_fiber_ccf` and
+`platform_smartspim_qc_metrics`; its `asset_basics` job includes only datasets listed in
+`.codeocean/.datasets.json`. Input/output paths are constants; only the backend
+environment variable selects this mode. Neither job publishes registry fragments or versions.
+Full-cache sync and other jobs are rejected. See [README.md](README.md) for
+configuration and supported metadata layouts.
+
 ## Design in one paragraph
 
 Instead of one capsule running the whole sync in a single process, each cache
@@ -35,7 +47,7 @@ Run **`asset_basics` first**, then the parallel jobs, then **`cell-by-everything
 | `fast`            | `unique_project_names`, `unique_subject_ids`, `unique_genotypes`, `metadata_core`, `metadata_upgrade`, `platform_fib`, `platform_mouselight`, `platform_qc` | `asset_basics` | All the cheap metadata tables, grouped into one capsule. |
 | `qc`              | `quality_control` | `asset_basics` | Fetches QC-bearing records in 50-record batches and partitions them by raw asset. |
 | `qc_status`       | `qc_status` | — | Fetches aggregate modality and stage statuses from DocDB in 50-record batches; does not read other cache tables. |
-| `smartspim`       | `platform_smartspim`, `platform_smartspim_fiber_ccf` | `asset_basics` | |
+| `smartspim`       | `platform_smartspim`, `platform_smartspim_fiber_ccf`, `platform_smartspim_qc_metrics` | `asset_basics` | |
 | `exaspim`         | `platform_exaspim`, `platform_exaspim_intermediates` | `asset_basics` | Rechecks intermediate-folder presence each run. |
 | `df`              | `platform_dynamic_foraging_sessions`, `platform_dynamic_foraging_trials`, `platform_dynamic_foraging_events` | `asset_basics` | Builds sessions first, then loops per-subject for trials/events. |
 | `fib_traces`      | `platform_fib_traces` | `asset_basics` | Loops over derived `fib` assets; skips assets whose partition already exists. |

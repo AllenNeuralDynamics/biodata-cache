@@ -6,6 +6,7 @@ import re
 import pandas as pd
 
 import biodata_cache.registry as registry
+from biodata_cache.codeocean import CodeOceanBackend
 from biodata_cache.models import Column
 from biodata_cache.utils import CacheLogMessage, setup_logging
 
@@ -33,6 +34,9 @@ COLUMNS = [
 
 def _fetch_records() -> list[dict]:
     """Fetch derived SPIM instrument records and their acquisition/QC metadata."""
+    if isinstance(registry.BACKEND, CodeOceanBackend):
+        return registry.BACKEND.load_records()
+
     from aind_data_access_api.document_db import MetadataDbClient
 
     client = MetadataDbClient(host=registry.API_GATEWAY_HOST, version="v2")
@@ -137,7 +141,7 @@ def platform_smartspim_qc_metrics(force_update: bool = False) -> pd.DataFrame:
     """Build the standard SPIM QC metrics table from derived asset metadata.
 
     Args:
-        force_update: If True, rebuild from DocDB.
+        force_update: If True, rebuild from the active metadata source.
 
     Returns:
         DataFrame with one row per standard SPIM QC metric found on a derived
@@ -146,10 +150,12 @@ def platform_smartspim_qc_metrics(force_update: bool = False) -> pd.DataFrame:
     name = registry.NAMES["smartspim_qc_metrics"]
     df = registry.BACKEND.read(name)
 
-    if df.empty and not force_update:
+    local = isinstance(registry.BACKEND, CodeOceanBackend)
+    missing = not registry.BACKEND.cache_exists(name) if local else df.empty
+    if missing and not force_update and not local:
         raise ValueError("Cache is empty. Use force_update=True to fetch data from database.")
 
-    if df.empty or force_update:
+    if missing or force_update:
         setup_logging()
         records = _fetch_records()
         logging.info(

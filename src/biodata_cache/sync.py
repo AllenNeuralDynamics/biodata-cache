@@ -24,6 +24,7 @@ from collections.abc import Callable
 from .cache_table_helpers.cell_by_everything import build_cell_by_everything
 from .cache_table_helpers.platform_qc import PLATFORMS
 from .cache_table_helpers.shared.cloudwatch_utils import build_all_operations
+from .codeocean import CodeOceanBackend
 from .models import CacheTable
 from .registry import BACKEND, NAMES, TABLE_REGISTRY
 from .table_specs import TABLE_SPECS, table_specs_for_job
@@ -488,6 +489,15 @@ def run_sync_job(job: str | None = None) -> None:
         )
     if job not in JOBS:
         raise ValueError(f"Unknown sync job '{job}'. Valid jobs: {sorted(JOBS)}")
+    if isinstance(BACKEND, CodeOceanBackend):
+        if job == "asset_basics":
+            TABLE_REGISTRY[NAMES["basics"]](force_update=True)
+        elif job == "smartspim":
+            for key in ("smartspim_fiber_ccf", "smartspim_qc_metrics"):
+                TABLE_REGISTRY[NAMES[key]](force_update=True)
+        else:
+            raise NotImplementedError(f"Code Ocean sync supports only asset_basics and smartspim, not {job!r}")
+        return
     JOBS[job]()
 
 
@@ -502,6 +512,8 @@ def update_all_tables(fast: bool = True, slow: bool = True) -> None:
         fast: If True, run the grouped fast DocDB-only cache tables.
         slow: If True, run the slow per-subject/S3 cache tables.
     """
+    if isinstance(BACKEND, CodeOceanBackend):
+        raise NotImplementedError("Code Ocean cannot run a full-cache sync; use run_sync_job('smartspim')")
     run_sync_job("asset_basics")
 
     if fast:

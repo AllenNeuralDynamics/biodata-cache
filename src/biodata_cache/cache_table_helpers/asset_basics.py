@@ -6,6 +6,7 @@ import pandas as pd
 
 import biodata_cache.registry as registry
 from biodata_cache.backend import Predicate
+from biodata_cache.codeocean import CodeOceanBackend
 from biodata_cache.models import Column
 from biodata_cache.utils import (
     CacheLogMessage,
@@ -78,6 +79,62 @@ def _flatten_asset_record(record: dict) -> dict:
     }
 
 
+def _empty_asset_basics() -> pd.DataFrame:
+    """Create the shared column schema used before appending flattened records."""
+    return pd.DataFrame(
+        columns=[
+            "_id",
+            "_last_modified",
+            "created",
+            "modalities",
+            "project_name",
+            "data_level",
+            "subject_id",
+            "acquisition_start_time",
+            "acquisition_end_time",
+            "code_ocean",
+            "process_date",
+            "genotype",
+            "age",
+            "acquisition_type",
+            "location",
+            "name",
+            "experimenters",
+            "experimenters_normalized",
+            "instrument_id",
+            "instrument_id_normalized",
+            "investigators",
+            "investigators_normalized",
+        ]
+    )
+
+
+def _normalize_asset_names(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize display names using the same rules for every metadata source."""
+
+    def _iter_names(cell):
+        """Helper to iterate over names in a cell that may be a list or a single string."""
+        if hasattr(cell, "__iter__") and not isinstance(cell, str):
+            return list(cell)
+        return []
+
+    all_names = [
+        name
+        for col in ("experimenters_normalized", "investigators_normalized")
+        for cell in df[col]
+        for name in _iter_names(cell)
+    ]
+    first_name_map = build_first_name_map(list(dict.fromkeys(all_names)))
+    if first_name_map:
+        df["experimenters_normalized"] = df["experimenters_normalized"].apply(
+            lambda x: apply_first_name_map(_iter_names(x), first_name_map)
+        )
+        df["investigators_normalized"] = df["investigators_normalized"].apply(
+            lambda x: apply_first_name_map(_iter_names(x), first_name_map)
+        )
+    return df
+
+
 def _load_asset_basics(force_update: bool = False) -> pd.DataFrame:
     """Load the complete asset basics table, refreshing it when necessary.
 
@@ -88,6 +145,15 @@ def _load_asset_basics(force_update: bool = False) -> pd.DataFrame:
         Complete DataFrame with basic asset metadata.
 
     """
+    if isinstance(registry.BACKEND, CodeOceanBackend):
+        name = registry.NAMES["basics"]
+        if force_update or not registry.BACKEND.cache_exists(name):
+            rows = [_flatten_asset_record(record) for record in registry.BACKEND.load_records()]
+            df = pd.concat([_empty_asset_basics(), pd.DataFrame(rows)], ignore_index=True)
+            df = _normalize_asset_names(df)
+            registry.BACKEND.write(name, df)
+        return registry.BACKEND.read(name)
+
     df = registry.BACKEND.read(registry.NAMES["basics"])
 
     FIELDS = [
@@ -118,32 +184,7 @@ def _load_asset_basics(force_update: bool = False) -> pd.DataFrame:
                 backend=registry.BACKEND.__class__.__name__, table=registry.NAMES["basics"], message="Updating cache"
             ).to_json()
         )
-        df = pd.DataFrame(
-            columns=[
-                "_id",
-                "_last_modified",
-                "created",
-                "modalities",
-                "project_name",
-                "data_level",
-                "subject_id",
-                "acquisition_start_time",
-                "acquisition_end_time",
-                "code_ocean",
-                "process_date",
-                "genotype",
-                "age",
-                "acquisition_type",
-                "location",
-                "name",
-                "experimenters",
-                "experimenters_normalized",
-                "instrument_id",
-                "instrument_id_normalized",
-                "investigators",
-                "investigators_normalized",
-            ]
-        )
+        df = _empty_asset_basics()
         from aind_data_access_api.document_db import MetadataDbClient
 
         client = MetadataDbClient(
@@ -190,26 +231,7 @@ def _load_asset_basics(force_update: bool = False) -> pd.DataFrame:
         new_df = pd.DataFrame(records)
         df = pd.concat([df[~df["_id"].isin(keep_ids)], new_df], ignore_index=True)
 
-        def _iter_names(cell):
-            """Helper to iterate over names in a cell that may be a list or a single string."""
-            if hasattr(cell, "__iter__") and not isinstance(cell, str):
-                return list(cell)
-            return []
-
-        all_names = [
-            name
-            for col in ("experimenters_normalized", "investigators_normalized")
-            for cell in df[col]
-            for name in _iter_names(cell)
-        ]
-        first_name_map = build_first_name_map(list(dict.fromkeys(all_names)))
-        if first_name_map:
-            df["experimenters_normalized"] = df["experimenters_normalized"].apply(
-                lambda x: apply_first_name_map(_iter_names(x), first_name_map)
-            )
-            df["investigators_normalized"] = df["investigators_normalized"].apply(
-                lambda x: apply_first_name_map(_iter_names(x), first_name_map)
-            )
+        df = _normalize_asset_names(df)
 
         registry.BACKEND.write(registry.NAMES["basics"], df)
 

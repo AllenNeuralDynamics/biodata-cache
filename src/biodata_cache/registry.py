@@ -3,12 +3,14 @@
 import logging
 import os
 from collections.abc import Callable
+from functools import wraps
 from typing import Any
 
 from biodata_cache.backend import (
     MemoryBackend,
     S3Backend,
 )
+from biodata_cache.codeocean import CodeOceanBackend
 from biodata_cache.table_specs import NAMES, TABLE_SPECS_BY_NAME  # noqa: F401
 from biodata_cache.utils import CacheLogMessage
 
@@ -16,7 +18,7 @@ from biodata_cache.utils import CacheLogMessage
 
 API_GATEWAY_HOST = "api.allenneuraldynamics.org"
 
-backend_type = os.getenv("BIODATA_CACHE_BACKEND", "memory").lower()
+backend_type = os.getenv("BIODATA_CACHE_BACKEND", "memory").strip().lower()
 
 if backend_type == "s3":  # pragma: no cover
     logging.info(
@@ -30,6 +32,8 @@ elif backend_type == "memory":  # pragma: no cover
         ).to_json()
     )
     BACKEND = MemoryBackend()
+elif backend_type == "codeocean":
+    BACKEND = CodeOceanBackend()
 else:  # pragma: no cover
     raise ValueError(f"Unknown BIODATA_CACHE_BACKEND: {backend_type}")
 
@@ -45,7 +49,15 @@ def register_table(name: str):
 
     def decorator(func):
         """Register function in cache table registry."""
-        TABLE_REGISTRY[name] = func
-        return func
+
+        @wraps(func)
+        def scoped_table(*args, **kwargs):
+            """Reject unsupported local tables before their source code executes."""
+            if isinstance(BACKEND, CodeOceanBackend):
+                BACKEND.require_table(name)
+            return func(*args, **kwargs)
+
+        TABLE_REGISTRY[name] = scoped_table
+        return scoped_table
 
     return decorator

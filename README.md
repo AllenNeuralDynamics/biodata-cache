@@ -28,7 +28,69 @@ export BIODATA_CACHE_BACKEND='S3'
 export BIODATA_CACHE_BACKEND='S3'
 ```
 
-Options are 'S3', 'MEMORY'.
+Options are 'S3', 'MEMORY', and 'CODEOCEAN'.
+
+### Scoped Code Ocean computations
+
+Use `codeocean` to build QC tables from attached assets without DocDB or S3
+access. Set the backend before importing the package:
+
+```bash
+export BIODATA_CACHE_BACKEND=codeocean
+```
+
+The backend reads `.codeocean/.datasets.json` relative to the capsule working
+directory. Only entries in `attached_datasets` are processed; each `mount`
+resolves below `/data`, and each `id` is the dataset's Code Ocean identifier.
+For example:
+
+```json
+{
+  "version": 1,
+  "attached_datasets": [
+    {
+      "id": "c76cfb05-c3f4-4871-9cae-b749efcf9a41",
+      "mount": "869614_2026-10-07_19-03-02"
+    }
+  ]
+}
+```
+
+That dataset is read at `/data/869614_2026-10-07_19-03-02`. Each mount root
+contains `metadata.json` (a complete metadata record), or component files such
+as `data_description.json`, `subject.json`, `procedures.json`, `instrument.json`,
+`acquisition.json`, and `quality_control.json`. Component files override matching
+manifest fields. A data description is required; missing optional components
+are empty objects. Missing record IDs and timestamps remain null. If
+`other_identifiers` is absent, the attached dataset ID supplies its `Code Ocean`
+entry. Missing locations use the local mount path. No network lookup fills
+missing metadata. Invalid attachment manifests and missing mounts fail.
+
+```python
+from biodata_cache import (
+    asset_basics,
+    platform_smartspim_fiber_ccf,
+    platform_smartspim_qc_metrics,
+)
+from biodata_cache.registry import BACKEND
+
+basics = asset_basics(modality="SPIM", columns=["name", "subject_id"])
+fibers = platform_smartspim_fiber_ccf()
+metrics = platform_smartspim_qc_metrics()
+print(BACKEND.get_location("platform_smartspim_qc_metrics"))
+```
+
+QC helpers build on the first call and reuse their local results; use
+`force_update=True` to reread changed metadata. Inputs remain read-only. Only
+requested QC tables are written as Parquet below a scope-specific directory in
+`/results/biodata-cache`; `asset_basics` stays in memory and includes only attached
+assets. Input, output, and attachment-file paths are constants in `codeocean.py`;
+no additional environment variables are used.
+
+`run_sync_job("smartspim")` builds both QC tables locally and
+`run_sync_job("asset_basics")` builds only scoped basics. Other tables, partition
+operations, full-cache syncs, and registry/version APIs are unsupported in this
+backend. The S3 sync pipeline below continues to use `BIODATA_CACHE_BACKEND=S3`.
 
 ### Fetch data
 
