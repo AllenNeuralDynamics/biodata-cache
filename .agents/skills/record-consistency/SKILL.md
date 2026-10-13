@@ -64,7 +64,7 @@ The code lives in `src/biodata_cache/cache_table_helpers/record_consistency/`:
 |---|---|
 | `check_key` | Check module filename |
 | `check_description` | The check's `description` |
-| `check_source_url` | Link to the check at the release that ran |
+| `check_source_url` | Link to the check at the commit that ran (`BIODATA_CACHE_SOURCE_REF` overrides; falls back to the release tag outside a git checkout) |
 | `check_hash` | Hash of the check module's source; gates reuse on the next run |
 | `source` | The source whose records the check evaluated |
 | `evaluated_count` | Records with a result, evaluated or reused |

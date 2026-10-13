@@ -1,6 +1,7 @@
 """Tests for record-consistency sources, checks, and the snapshot builder."""
 
 import hashlib
+import subprocess
 
 import pandas as pd
 import pytest
@@ -97,6 +98,31 @@ def test_check_key_hash_and_source_url_come_from_its_module(isolated, fake, tmp_
     assert check.source_url == (
         f"https://github.com/AllenNeuralDynamics/biodata-cache/blob/v{__version__}/src/name_starts_with_a.py#L4"
     )
+
+
+def test_source_ref_prefers_env_override(monkeypatch):
+    monkeypatch.setenv(framework.SOURCE_REF_ENV, "abc123")
+
+    assert framework._source_ref() == "abc123"
+
+
+def test_source_ref_is_checkout_commit(monkeypatch, tmp_path):
+    monkeypatch.delenv(framework.SOURCE_REF_ENV, raising=False)
+    (tmp_path / "src").mkdir()
+    git = ["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+    sha = subprocess.run([*git, "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    monkeypatch.setattr(framework, "SOURCE_ROOT", tmp_path / "src")
+
+    assert framework._source_ref() == sha
+
+
+def test_source_ref_falls_back_to_release_tag_outside_a_checkout(monkeypatch, tmp_path):
+    monkeypatch.delenv(framework.SOURCE_REF_ENV, raising=False)
+    monkeypatch.setattr(framework, "SOURCE_ROOT", tmp_path)
+
+    assert framework._source_ref() == f"v{__version__}"
 
 
 @pytest.mark.parametrize(
