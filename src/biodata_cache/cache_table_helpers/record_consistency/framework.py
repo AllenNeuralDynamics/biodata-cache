@@ -12,7 +12,9 @@ checks that do not compare across records are reused for records whose
 import hashlib
 import inspect
 import logging
+import os
 import re
+import subprocess
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
@@ -32,9 +34,35 @@ PASS = "pass"
 FAIL = "fail"
 RECORD_FIELDS = ["record_id", "name", "location", "record_last_modified"]
 CHECK_KEY_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
+SOURCE_REF_ENV = "BIODATA_CACHE_SOURCE_REF"
 
 SOURCES: dict[str, "Source"] = {}
 CHECKS: dict[str, "Check"] = {}
+
+
+def _source_ref() -> str:
+    """Return the git ref that check source links point at.
+
+    Uses ``BIODATA_CACHE_SOURCE_REF`` when set, else the commit of the source checkout the
+    process runs from, else the ``v<version>`` release tag.
+    """
+    ref = os.environ.get(SOURCE_REF_ENV)
+    if ref:
+        return ref
+    try:
+        top, sha = (
+            subprocess.run(
+                ["git", "-C", str(SOURCE_ROOT), *args],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10,
+            ).stdout.strip()
+            for args in (["rev-parse", "--show-toplevel"], ["rev-parse", "HEAD"])
+        )
+    except (OSError, subprocess.SubprocessError):
+        return f"v{__version__}"
+    return sha if Path(top).resolve() == SOURCE_ROOT.parent else f"v{__version__}"
 
 
 def _log(message: str) -> None:
@@ -136,7 +164,7 @@ class Check(ABC):
         cls.key = key
         cls.hash = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
         line = inspect.getsourcelines(cls)[1]
-        cls.source_url = f"{REPOSITORY_URL}/blob/v{__version__}/src/{path.relative_to(SOURCE_ROOT).as_posix()}#L{line}"
+        cls.source_url = f"{REPOSITORY_URL}/blob/{_source_ref()}/src/{path.relative_to(SOURCE_ROOT).as_posix()}#L{line}"
         CHECKS[key] = cls()
 
     @abstractmethod
