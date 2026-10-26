@@ -51,3 +51,42 @@ def test_aind_open_data_prefix_missing_docdb_v2_compares_against_docdb_v2():
         ("docdb_v2",),
         True,
     )
+
+
+def test_docdb_v2_code_ocean_location_mismatch_requires_every_visible_asset_to_match():
+    def record(name, location, ids):
+        return {"record_id": name, "name": name, "location": location, "code_ocean_ids": ids}
+
+    records = [
+        record("match", "s3://aind-open-data/match/", ["external"]),
+        record("internal", "s3://codeocean-bucket/internal-id", ["internal-id"]),
+        record("one-of-two", "s3://aind-open-data/match", ["external", "moved"]),
+        record("internal-mismatch", "s3://codeocean-bucket/other-id", ["internal-id"]),
+        record("no-location", None, ["external"]),
+        record("invisible", "s3://aind-open-data/match", ["not-in-catalog"]),
+        record("no-ids", "s3://aind-open-data/match", []),
+    ]
+    assets = [
+        {"record_id": "external", "name": "a", "location": "s3://aind-open-data/match"},
+        {"record_id": "moved", "name": "b", "location": "s3://aind-private-data/match"},
+        {"record_id": "internal-id", "name": "c", "location": None},
+    ]
+
+    assert CHECKS["docdb_v2_code_ocean_location_mismatch"].evaluate(records, code_ocean_data_assets=assets) == [
+        "pass",
+        "pass",
+        "fail",
+        "fail",
+        "fail",
+        None,
+        None,
+    ]
+
+
+def test_docdb_v2_code_ocean_location_mismatch_compares_against_code_ocean():
+    check = CHECKS["docdb_v2_code_ocean_location_mismatch"]
+    assert (check.source, check.needs, check.compares_across_records) == (
+        "docdb_v2",
+        ("code_ocean_data_assets",),
+        True,
+    )
