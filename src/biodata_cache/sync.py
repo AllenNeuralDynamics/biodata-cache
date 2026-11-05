@@ -220,6 +220,7 @@ def _job_operations() -> None:
     build_all_operations()
     publish_registry_fragment(NAMES["fib_operations"])
     publish_registry_fragment(NAMES["df_operations"])
+    publish_registry_fragment(NAMES["smartspim_operations"])
 
 
 def _job_ecephys_spikes() -> None:
