@@ -1,5 +1,6 @@
 """Unit tests for platform_smartspim_operations cache table wiring."""
 
+import json
 from unittest.mock import patch
 
 import pandas as pd
@@ -34,6 +35,51 @@ def test_registers_pipeline():
 
 def test_pipeline_name():
     assert smartspim_ops._PIPELINE_NAME == "SmartSPIM Pipeline"
+
+
+def test_registers_log_schema():
+    schema = smartspim_ops.cw.schema_for("SmartSPIM Pipeline")
+    assert schema.asset_field == "dataset_name"
+    assert schema.error_field == "error"
+    assert {"pipeline_plan", "stage_failure", "pipeline_finished"} <= set(schema.event_types)
+
+
+def test_query_uses_dataset_name_and_excludes_legacy_rows():
+    q = smartspim_ops.cw.query_string("SmartSPIM Pipeline")
+    assert 'dataset_name != ""' in q
+    assert "acquisition_name" not in q
+    assert "dataset_name not like /^Ex_/" in q
+    assert "dataset_name not like /_stitched_/" in q
+    assert '"stage_failure"' in q
+
+
+def test_parse_row_reads_dataset_name_and_error():
+    record = {
+        "timestamp": "2026-07-27T10:00:00+00:00",
+        "level": "ERROR",
+        "message": "failed",
+        "dataset_name": "SmartSPIM_123_2026-01-01_00-00-00",
+        "process_name": "stitch",
+        "event_type": "stage_failure",
+        "pipeline_name": "SmartSPIM Pipeline",
+        "error": "boom",
+    }
+    row = [
+        {"field": "@timestamp", "value": "2026-07-27 10:00:00.000"},
+        {"field": "@message", "value": json.dumps(record)},
+        {"field": "@logStream", "value": "stream"},
+    ]
+    parsed = smartspim_ops.cw.parse_row(row)
+    assert parsed["asset_name"] == "SmartSPIM_123_2026-01-01_00-00-00"
+    assert parsed["error_info"] == "boom"
+    assert parsed["event_type"] == "stage_error"
+
+
+def test_run_level_events_pass_through():
+    schema = smartspim_ops.cw.schema_for("SmartSPIM Pipeline")
+    assert schema.normalize_event_type("pipeline_finished") == "pipeline_finished"
+    assert schema.normalize_event_type("pipeline_plan") == "pipeline_plan"
+    assert schema.normalize_event_type("stage_complete") == "stage_complete"
 
 
 def test_columns_names():
