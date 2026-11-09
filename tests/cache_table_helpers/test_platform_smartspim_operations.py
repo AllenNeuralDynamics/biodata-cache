@@ -29,11 +29,11 @@ def test_platform_smartspim_operations_delegates_to_shared():
 
 
 def test_registers_pipeline():
-    assert smartspim_ops.cw._OPERATIONS_PIPELINES.get("aind-smartspim-pipeline") == "smartspim_operations"
+    assert smartspim_ops.cw._OPERATIONS_PIPELINES.get("SmartSPIM Pipeline") == "smartspim_operations"
 
 
 def test_pipeline_name():
-    assert smartspim_ops._PIPELINE_NAME == "aind-smartspim-pipeline"
+    assert smartspim_ops._PIPELINE_NAME == "SmartSPIM Pipeline"
 
 
 def test_columns_names():

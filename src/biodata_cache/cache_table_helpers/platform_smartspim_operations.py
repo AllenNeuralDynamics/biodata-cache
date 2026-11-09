@@ -2,7 +2,7 @@
 
 Reconstructs the processing lifecycle of each SmartSPIM acquisition from
 the structured pipeline logs emitted to CloudWatch by the
-``aind-smartspim-pipeline``. One row is stored per lifecycle event
+``SmartSPIM Pipeline``. One row is stored per lifecycle event
 (``stage_start`` / ``stage_complete`` / ``stage_error``); ``asset_name`` (the
 acquisition name) is the partition key and joins to ``asset_basics``.
 
@@ -16,7 +16,7 @@ import biodata_cache.registry as registry
 from biodata_cache.cache_table_helpers.shared import cloudwatch_utils as cw
 from biodata_cache.models import Column
 
-_PIPELINE_NAME = "aind-smartspim-pipeline"
+_PIPELINE_NAME = "SmartSPIM Pipeline"
 _TABLE_KEY = "smartspim_operations"
 
 cw.register_operations_pipeline(_PIPELINE_NAME, _TABLE_KEY)
