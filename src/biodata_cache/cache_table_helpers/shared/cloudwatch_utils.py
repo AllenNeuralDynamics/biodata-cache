@@ -20,6 +20,7 @@ import json
 import logging
 import time
 import urllib.parse
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import boto3
@@ -46,6 +47,43 @@ REGION = "us-west-2"
 # routes each event to the matching table.
 _OPERATIONS_PIPELINES: dict[str, str] = {}
 
+
+@dataclass(frozen=True)
+class PipelineLogSchema:
+    """How a pipeline's structured log records are shaped.
+
+    Pipelines do not all log the same fields. The default matches the fiber
+    photometry and dynamic foraging pipelines; others override it at registration.
+
+    Attributes:
+        asset_field: Record field holding the asset name (the partition key).
+        event_types: Lifecycle ``event_type`` values to keep.
+        error_field: Record field holding the error/traceback for failure events.
+        exclude_asset_patterns: Logs Insights regexes; records whose asset field
+            matches any of them are dropped (e.g. legacy rows logged under another
+            name).
+        event_type_aliases: Maps this pipeline's raw ``event_type`` values to the
+            shared vocabulary (e.g. ``stage_failure`` -> ``stage_error``) so every
+            operations table reports the same values. Unmapped values pass through.
+    """
+
+    asset_field: str = "acquisition_name"
+    event_types: tuple[str, ...] = KEEP_EVENT_TYPES
+    error_field: str = "exc_info"
+    exclude_asset_patterns: tuple[str, ...] = ()
+    event_type_aliases: tuple[tuple[str, str], ...] = ()
+
+    def normalize_event_type(self, event_type: str | None) -> str | None:
+        """Return the shared event_type for a raw value from this pipeline."""
+        return dict(self.event_type_aliases).get(event_type, event_type)
+
+
+DEFAULT_LOG_SCHEMA = PipelineLogSchema()
+
+# Per-pipeline log schemas, populated by ``register_operations_pipeline``. Pipelines
+# without an entry use ``DEFAULT_LOG_SCHEMA``.
+_PIPELINE_SCHEMAS: dict[str, PipelineLogSchema] = {}
+
 EVENT_COLUMNS = [
     "asset_name",
     "pipeline_name",
@@ -60,9 +98,24 @@ EVENT_COLUMNS = [
 ]
 
 
-def register_operations_pipeline(pipeline_name: str, table_key: str) -> None:
-    """Register an operations table's CloudWatch pipeline for the combined pull."""
+def register_operations_pipeline(
+    pipeline_name: str,
+    table_key: str,
+    schema: PipelineLogSchema | None = None,
+) -> None:
+    """Register an operations table's CloudWatch pipeline for the combined pull.
+
+    Pass ``schema`` when the pipeline's log records differ from
+    ``DEFAULT_LOG_SCHEMA`` (e.g. a different asset-name field).
+    """
     _OPERATIONS_PIPELINES[pipeline_name] = table_key
+    if schema is not None:
+        _PIPELINE_SCHEMAS[pipeline_name] = schema
+
+
+def schema_for(pipeline_name: str | None) -> PipelineLogSchema:
+    """Return the log schema registered for a pipeline, or the default."""
+    return _PIPELINE_SCHEMAS.get(pipeline_name, DEFAULT_LOG_SCHEMA)
 
 
 def _last_scan_key(scope: str) -> str:
@@ -144,27 +197,36 @@ def logs_client():
 def query_string(pipeline_name: str | None = None, acquisition_name: str | None = None) -> str:
     """Build the Logs Insights query string for pipeline lifecycle events.
 
-    Restricts to the lifecycle event types and non-empty acquisition names. When
-    ``pipeline_name`` is None, every registered operations pipeline is matched (the
-    single combined pull); otherwise only that pipeline. When ``acquisition_name``
-    is given, only that acquisition's events are returned.
+    Each pipeline gets its own clause built from its log schema (event types,
+    non-empty asset field, legacy-name exclusions); the clauses are OR'd together.
+    When ``pipeline_name`` is None, every registered operations pipeline is matched
+    (the single combined pull); otherwise only that pipeline. When
+    ``acquisition_name`` is given, only that asset's events are returned.
     """
-    event_list = ", ".join(f'"{e}"' for e in KEEP_EVENT_TYPES)
-    if pipeline_name is None:
-        pipeline_list = ", ".join(f'"{p}"' for p in _OPERATIONS_PIPELINES)
-        pipeline_filter = f"| filter pipeline_name in [{pipeline_list}]"
-    else:
-        pipeline_filter = f'| filter pipeline_name = "{pipeline_name}"'
-    lines = [
-        "fields @timestamp, @message, @logStream",
-        pipeline_filter,
-        f"| filter event_type in [{event_list}]",
-        '| filter acquisition_name != ""',
+    pipelines = list(_OPERATIONS_PIPELINES) if pipeline_name is None else [pipeline_name]
+    clauses = " or ".join(_pipeline_clause(p, acquisition_name) for p in pipelines)
+    return "\n".join(
+        [
+            "fields @timestamp, @message, @logStream",
+            f"| filter {clauses}",
+            "| sort @timestamp asc",
+        ]
+    )
+
+
+def _pipeline_clause(pipeline_name: str, acquisition_name: str | None) -> str:
+    """Return the parenthesized Logs Insights filter for one pipeline."""
+    schema = schema_for(pipeline_name)
+    event_list = ", ".join(f'"{e}"' for e in schema.event_types)
+    parts = [
+        f'pipeline_name = "{pipeline_name}"',
+        f"event_type in [{event_list}]",
+        f'{schema.asset_field} != ""',
     ]
+    parts.extend(f"{schema.asset_field} not like /{pattern}/" for pattern in schema.exclude_asset_patterns)
     if acquisition_name is not None:
-        lines.append(f'| filter acquisition_name = "{acquisition_name}"')
-    lines.append("| sort @timestamp asc")
-    return "\n".join(lines)
+        parts.append(f'{schema.asset_field} = "{acquisition_name}"')
+    return "(" + " and ".join(parts) + ")"
 
 
 def run_query(client, start_ms: int, end_ms: int, query: str) -> list[list[dict]]:
@@ -210,8 +272,9 @@ def parse_row(row: list[dict]) -> dict | None:
     """Parse one Insights result row into a normalized event dict, or None.
 
     ``@message`` is a JSON log record; ``@timestamp`` is CloudWatch's ingestion
-    time (kept separately as ``ingest_ts``). Rows whose message is not JSON, or
-    that lack an acquisition name, are skipped.
+    time (kept separately as ``ingest_ts``). The asset-name and error fields are
+    read according to the record's pipeline log schema. Rows whose message is not
+    JSON, or that lack an asset name, are skipped.
     """
     fields = {f["field"]: f["value"] for f in row}
     message = fields.get("@message")
@@ -221,7 +284,8 @@ def parse_row(row: list[dict]) -> dict | None:
         record = json.loads(message)
     except (json.JSONDecodeError, TypeError):
         return None
-    asset_name = record.get("acquisition_name")
+    schema = schema_for(record.get("pipeline_name"))
+    asset_name = record.get(schema.asset_field)
     if not asset_name:
         return None
     return {
@@ -230,10 +294,10 @@ def parse_row(row: list[dict]) -> dict | None:
         "timestamp": record.get("timestamp"),
         "ingest_ts": fields.get("@timestamp"),
         "process_name": record.get("process_name"),
-        "event_type": record.get("event_type"),
+        "event_type": schema.normalize_event_type(record.get("event_type")),
         "level": record.get("level"),
         "message": record.get("message"),
-        "error_info": record.get("exc_info"),
+        "error_info": record.get(schema.error_field),
         "cloudwatch_url": cloudwatch_url(fields.get("@logStream")),
     }
 
@@ -448,9 +512,12 @@ def operations_columns() -> list[Column]:
         Column(name="timestamp", description="Event time (UTC) from the pipeline log record"),
         Column(name="ingest_ts", description="CloudWatch log ingestion time (UTC), kept separately from event time"),
         Column(name="process_name", description="Pipeline stage that emitted the event (e.g. aind-fip-dff)"),
-        Column(name="event_type", description="Lifecycle event: stage_start, stage_complete, or stage_error"),
+        Column(
+            name="event_type",
+            description="Lifecycle event (e.g. stage_start, stage_complete, stage_error/stage_failure)",
+        ),
         Column(name="level", description="Log level of the record (e.g. INFO, ERROR)"),
         Column(name="message", description="Human-readable log message"),
-        Column(name="error_info", description="Exception traceback for stage_error events; null otherwise"),
+        Column(name="error_info", description="Error message or traceback for failure events; null otherwise"),
         Column(name="cloudwatch_url", description="Deep link to the CloudWatch console log stream for this event"),
     ]

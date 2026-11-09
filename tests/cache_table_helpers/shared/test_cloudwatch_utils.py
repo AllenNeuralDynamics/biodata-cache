@@ -41,7 +41,7 @@ def test_query_string_includes_filters_and_event_types():
 
 def test_query_string_single_asset():
     q = cw.query_string(_PIPELINE, "behavior_1_2026-01-01_00-00-00")
-    assert 'filter acquisition_name = "behavior_1_2026-01-01_00-00-00"' in q
+    assert 'acquisition_name = "behavior_1_2026-01-01_00-00-00"' in q
 
 
 def test_query_string_pipeline_is_parameterized():
@@ -52,14 +52,37 @@ def test_query_string_pipeline_is_parameterized():
 def test_query_string_all_registered_pipelines():
     with patch.dict(cw._OPERATIONS_PIPELINES, {"pipe-a": "k_a", "pipe-b": "k_b"}, clear=True):
         q = cw.query_string()
-    assert 'pipeline_name in ["pipe-a", "pipe-b"]' in q
-    assert "pipeline_name =" not in q
+    assert '(pipeline_name = "pipe-a" and' in q
+    assert ' or (pipeline_name = "pipe-b" and' in q
+
+
+def test_query_string_uses_per_pipeline_schema():
+    schema = cw.PipelineLogSchema(
+        asset_field="dataset_name", event_types=("stage_failure",), exclude_asset_patterns=("^Ex_",)
+    )
+    with (
+        patch.dict(cw._OPERATIONS_PIPELINES, {"pipe-a": "k_a", "pipe-b": "k_b"}, clear=True),
+        patch.dict(cw._PIPELINE_SCHEMAS, {"pipe-b": schema}, clear=True),
+    ):
+        q = cw.query_string()
+    assert '(pipeline_name = "pipe-a" and event_type in ["stage_start", "stage_complete", "stage_error"]' in q
+    assert 'acquisition_name != ""' in q
+    assert '(pipeline_name = "pipe-b" and event_type in ["stage_failure"] and dataset_name != ""' in q
+    assert "dataset_name not like /^Ex_/" in q
 
 
 def test_register_operations_pipeline():
     with patch.dict(cw._OPERATIONS_PIPELINES, {}, clear=True):
         cw.register_operations_pipeline("pipe-x", "key_x")
         assert cw._OPERATIONS_PIPELINES == {"pipe-x": "key_x"}
+        assert cw.schema_for("pipe-x") is cw.DEFAULT_LOG_SCHEMA
+
+
+def test_register_operations_pipeline_with_schema():
+    schema = cw.PipelineLogSchema(asset_field="dataset_name")
+    with patch.dict(cw._OPERATIONS_PIPELINES, {}, clear=True), patch.dict(cw._PIPELINE_SCHEMAS, {}, clear=True):
+        cw.register_operations_pipeline("pipe-y", "key_y", schema)
+        assert cw.schema_for("pipe-y") is schema
 
 
 def test_parse_row_valid():

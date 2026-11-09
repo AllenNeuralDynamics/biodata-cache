@@ -51,6 +51,9 @@ from biodata_cache.cache_table_helpers.platform_smartspim import assets_smartspi
 from biodata_cache.cache_table_helpers.platform_smartspim_fiber_ccf import (  # noqa: F401
     platform_smartspim_fiber_ccf,
 )
+from biodata_cache.cache_table_helpers.platform_smartspim_operations import (  # noqa: F401
+    platform_smartspim_operations,
+)
 from biodata_cache.cache_table_helpers.platform_smartspim_qc_metrics import (  # noqa: F401
     platform_smartspim_qc_metrics,
 )
