@@ -206,6 +206,17 @@ TABLE_SPECS = (
         sync_job="operations",
     ),
     TableSpec(
+        key="smartspim_operations",
+        name="platform_smartspim_operations",
+        description="SmartSPIM pipeline processing events (one row per lifecycle event), partitioned by asset_name",
+        table_type=CacheTableType.platform,
+        columns_factory=(
+            "biodata_cache.cache_table_helpers.platform_smartspim_operations.platform_smartspim_operations_columns"
+        ),
+        partition_key="asset_name",
+        sync_job="operations",
+    ),
+    TableSpec(
         key="ecephys_spikes",
         name="platform_ecephys_spikes",
         description="Sorted ecephys spike times (one row per spike), partitioned by asset_name",

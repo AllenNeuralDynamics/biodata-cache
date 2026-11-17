@@ -48,6 +48,7 @@ def _make_registry(basics_df=None, sessions_df=None):
         "platform_visual_learning_coreg": MagicMock(),
         "platform_fib_operations": MagicMock(),
         "platform_df_operations": MagicMock(),
+        "platform_smartspim_operations": MagicMock(),
         "platform_ecephys_spikes": MagicMock(),
         "platform_ecephys_units": MagicMock(),
         "platform_mouselight": MagicMock(),
@@ -319,7 +320,7 @@ def test_operations_job_single_pull(mock_build, mock_backend):
 
     mock_build.assert_called_once_with()
     published = {c[0][0] for c in mock_backend.put_registry_fragment.call_args_list}
-    assert {"platform_fib_operations", "platform_df_operations"} <= published
+    assert {"platform_fib_operations", "platform_df_operations", "platform_smartspim_operations"} <= published
 
 
 @patch("biodata_cache.sync.BACKEND")
